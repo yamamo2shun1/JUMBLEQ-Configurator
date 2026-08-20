@@ -1,7 +1,6 @@
 # JUMBLEQ Configurator
 
-JUMBLEQのルーティング、クロスフェーダー、DVS、磁気スイッチ設定を行う
-Next.js Webアプリです。ロリポップ！デプロイナウでの公開を前提にしています。
+This Next.js Web app configures JUMBLEQ routing, crossfader, DVS, and magnetic-switch settings. It is designed for deployment with LOLIPOP! Deploy Now.
 
 ## Prerequisites
 
@@ -16,7 +15,7 @@ npm run build
 npm start
 ```
 
-開発画面は `http://localhost:3000` で開きます。
+The development server is available at `http://localhost:3000`.
 
 ## Validation
 
@@ -25,27 +24,25 @@ npm test
 npm run test:e2e
 ```
 
-`npm test`はMIDIプロトコルとPreset処理の単体テスト、lint、デプロイ用の本番ビルドをまとめて確認します。
+`npm test` runs the MIDI protocol and preset-processing unit tests, linting, and a production build for deployment.
 
-`npm run test:e2e`はPlaywright上のChromiumを使用し、Web MIDIデバイスを模擬して次の操作を確認します。
+`npm run test:e2e` uses Chromium through Playwright and emulates a Web MIDI device to verify:
 
-- JUMBLEQへの接続と初期同期
-- 設定変更、カーブ編集、EEPROM保存コマンド
-- USB切断後の自動再接続
-- PresetのImport/Export
+- Connection to JUMBLEQ and initial synchronization
+- Setting changes, curve editing, and the EEPROM save command
+- Automatic reconnection after USB disconnection
+- Preset import and export
 
-初回のみ、E2Eテスト用ブラウザをインストールしてください。
+Install the browser used for E2E testing before running the tests for the first time:
 
 ```bash
 npx playwright install chromium
 ```
 
-すべてを続けて確認する場合は`npm run test:all`を使用します。
+Use `npm run test:all` to run all validation steps in sequence.
 
 ## Deploy Now
 
-`next.config.ts`では、デプロイナウが必要とする`output: "standalone"`を設定済みです。
-`postbuild`で公開ファイルとNext.jsの静的アセットをstandalone出力へ同梱します。
-リポジトリ直下から公開する場合、アプリのルートは`React`を指定します。
+`next.config.ts` sets `output: "standalone"`, as required by Deploy Now. The `postbuild` script includes the public files and Next.js static assets in the standalone output. When deploying from the repository root, set the application root to `WebConfigurator`.
 
-公開時はロリポップ！公式の手順に従ってCLIへログインし、Next.jsとしてデプロイします。
+For deployment, follow the official LOLIPOP! instructions to log in through the CLI and deploy the project as a Next.js application.
