@@ -45,7 +45,7 @@ test("shows the verified iPad MIDIWeb Browser guidance", async ({ page }) => {
 test("groups audio routing and MIDI controls by function", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Configurator sections" });
   await expect(navigation.getByRole("link")).toHaveText(["Audio", "MIDI", "Device"]);
-  await expect(page.getByText("Configurator preview · v0.9.0")).toBeVisible();
+  await expect(page.getByText("Configurator preview · v0.9.1")).toBeVisible();
 
   const audioSettings = page.locator("#audio");
   await expect(page.getByRole("heading", { name: "Audio settings" })).toBeVisible();
