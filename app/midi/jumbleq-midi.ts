@@ -1,5 +1,6 @@
 export type Source = "CH 1" | "CH 2" | "USB 1/2" | "USB 3/4";
 export type InputType = "LINE" | "PHONO";
+export type ReturnSource = "USB 1/2" | "USB 3/4" | "None";
 export type HeadphoneSource = "Fader A" | "Fader B" | "Thru" | "Master";
 export type MagneticMode = "CC" | "NOTE";
 export type AuxiliarySide = "A" | "B";
@@ -19,7 +20,7 @@ export type JumbleqConfig = {
   assignPost: Source;
   dvs1: boolean;
   dvs2: boolean;
-  returnSource: "USB 1/2" | "USB 3/4";
+  returnSource: ReturnSource;
   headphoneSource: HeadphoneSource;
   sensor2: AuxiliarySide;
   sensor3: AuxiliarySide;
@@ -72,6 +73,7 @@ const PROGRAM_CHANGE = 0xc0;
 const CONTROL_CHANGE = 0xb0;
 const inputTypes: readonly InputType[] = ["LINE", "PHONO"];
 const sources: readonly Source[] = ["CH 1", "CH 2", "USB 1/2", "USB 3/4"];
+const returnSources: readonly ReturnSource[] = ["USB 1/2", "USB 3/4", "None"];
 const headphoneSources: readonly HeadphoneSource[] = ["Fader A", "Fader B", "Thru", "Master"];
 const auxiliarySides: readonly AuxiliarySide[] = ["A", "B"];
 const magneticModes: readonly MagneticMode[] = ["CC", "NOTE"];
@@ -131,10 +133,10 @@ export function encodeProgramSetting(
     case "assignPost": program = 12 + settingIndex(field, value, sources); break;
     case "dvs1": program = 16 + booleanIndex(field, value); break;
     case "dvs2": program = 18 + booleanIndex(field, value); break;
-    case "returnSource": program = 20 + settingIndex(field, value, ["USB 1/2", "USB 3/4"] as const); break;
-    case "headphoneSource": program = 22 + settingIndex(field, value, headphoneSources); break;
-    case "sensor2": program = 26 + settingIndex(field, value, auxiliarySides); break;
-    case "sensor3": program = 28 + settingIndex(field, value, auxiliarySides); break;
+    case "returnSource": program = 20 + settingIndex(field, value, returnSources); break;
+    case "headphoneSource": program = 23 + settingIndex(field, value, headphoneSources); break;
+    case "sensor2": program = 27 + settingIndex(field, value, auxiliarySides); break;
+    case "sensor3": program = 29 + settingIndex(field, value, auxiliarySides); break;
     case "magMode": program = 122 + settingIndex(field, value, magneticModes); break;
     default: throw new Error(`Unknown setting field: ${String(field)}.`);
   }
@@ -159,10 +161,10 @@ function decodeProgramChange(program: number): DecodedConfigValue | null {
   if (program <= 15) return { field: "assignPost", value: sources[program - 12] };
   if (program <= 17) return { field: "dvs1", value: program === 17 };
   if (program <= 19) return { field: "dvs2", value: program === 19 };
-  if (program <= 21) return { field: "returnSource", value: program === 20 ? "USB 1/2" : "USB 3/4" };
-  if (program <= 25) return { field: "headphoneSource", value: headphoneSources[program - 22] };
-  if (program <= 27) return { field: "sensor2", value: program === 26 ? "A" : "B" };
-  if (program <= 29) return { field: "sensor3", value: program === 28 ? "A" : "B" };
+  if (program <= 22) return { field: "returnSource", value: returnSources[program - 20] };
+  if (program <= 26) return { field: "headphoneSource", value: headphoneSources[program - 23] };
+  if (program <= 28) return { field: "sensor2", value: auxiliarySides[program - 27] };
+  if (program <= 30) return { field: "sensor3", value: auxiliarySides[program - 29] };
   if (program === 122 || program === 123) return { field: "magMode", value: program === 122 ? "CC" : "NOTE" };
   return null;
 }

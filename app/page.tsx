@@ -23,7 +23,7 @@ import {
   Usb,
   X,
 } from "lucide-react";
-import { curvePercentToMidiCC, JumbleqConfig, ProgramSettingField, RESTORE_DEFAULT_CONFIG, Source, SYNC_FIELD_COUNT } from "./midi/jumbleq-midi";
+import { curvePercentToMidiCC, JumbleqConfig, ProgramSettingField, RESTORE_DEFAULT_CONFIG, ReturnSource, Source, SYNC_FIELD_COUNT } from "./midi/jumbleq-midi";
 import { useJumbleqMidi, type MagneticActivity, type MidiStatus } from "./midi/use-jumbleq-midi";
 import { parseJumbleqPreset, serializeJumbleqPreset } from "./presets/jumbleq-preset";
 
@@ -332,7 +332,7 @@ export default function Home() {
   const [curveB, setCurveB] = useState(RESTORE_DEFAULT_CONFIG.curveB);
   const [dvs1, setDvs1] = useState(RESTORE_DEFAULT_CONFIG.dvs1);
   const [dvs2, setDvs2] = useState(RESTORE_DEFAULT_CONFIG.dvs2);
-  const [returnSource, setReturnSource] = useState<"USB 1/2" | "USB 3/4">(RESTORE_DEFAULT_CONFIG.returnSource);
+  const [returnSource, setReturnSource] = useState<ReturnSource>(RESTORE_DEFAULT_CONFIG.returnSource);
   const [headphoneSource, setHeadphoneSource] = useState<"Fader A" | "Fader B" | "Thru" | "Master">(RESTORE_DEFAULT_CONFIG.headphoneSource);
   const [magMode, setMagMode] = useState<"CC" | "NOTE">(RESTORE_DEFAULT_CONFIG.magMode);
   const [sensor2, setSensor2] = useState<"A" | "B">(RESTORE_DEFAULT_CONFIG.sensor2);
@@ -440,6 +440,7 @@ export default function Home() {
       if (assignA === analogSource) updateProgram(setAssignA, "assignA", usbFallback);
       if (assignB === analogSource) updateProgram(setAssignB, "assignB", usbFallback);
       if (assignPost === analogSource) updateProgram(setAssignPost, "assignPost", usbFallback);
+      if (returnSource === usbFallback) updateProgram(setReturnSource, "returnSource", "None");
     }
 
     if (channel === 1) updateProgram(setDvs1, "dvs1", enabled);
@@ -645,8 +646,8 @@ export default function Home() {
             </article>
 
             <article className="control-card routing-control-card">
-              <div className="control-card-title"><span className="control-icon"><Cable size={18} /></span><div><h3>Return routing</h3><p>Select the USB return input.</p></div></div>
-              <div className="select-shell select-a routing-select"><select aria-label="USB return input" value={returnSource} onChange={(event) => updateProgram(setReturnSource, "returnSource", event.target.value as "USB 1/2" | "USB 3/4")}><option>USB 1/2</option><option>USB 3/4</option></select><ChevronDown size={16} /></div>
+              <div className="control-card-title"><span className="control-icon"><Cable size={18} /></span><div><h3>Return routing</h3><p>Select the USB return input or disable the return.</p></div></div>
+              <div className="select-shell select-a routing-select"><select aria-label="USB return input" value={returnSource} onChange={(event) => updateProgram(setReturnSource, "returnSource", event.target.value as ReturnSource)}><option value="USB 1/2" disabled={dvs1}>USB 1/2</option><option value="USB 3/4" disabled={dvs2}>USB 3/4</option><option value="None">None</option></select><ChevronDown size={16} /></div>
             </article>
           </section>
           </section>

@@ -17,7 +17,7 @@ const importedPreset = {
   assignPost: "CH 2",
   dvs1: true,
   dvs2: false,
-  returnSource: "USB 1/2",
+  returnSource: "None",
   headphoneSource: "Thru",
   sensor2: "B",
   sensor3: "A",
@@ -72,7 +72,7 @@ test("labels physical routing sources as analog inputs", async ({ page }) => {
   await expect(faderA.locator("option:checked")).toHaveText("ANALOG 2");
 });
 
-test("reroutes and disables analog sources when enabling DVS", async ({ page }) => {
+test("reroutes and disables conflicting fader and return sources when enabling DVS", async ({ page }) => {
   await page.getByRole("button", { name: "Connect device" }).click();
   await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
 
@@ -80,11 +80,13 @@ test("reroutes and disables analog sources when enabling DVS", async ({ page }) 
   const faderA = page.getByRole("combobox", { name: "Fader A", exact: true });
   const faderB = page.getByRole("combobox", { name: "Fader B", exact: true });
   const postFader = page.getByRole("combobox", { name: "Post fader", exact: true });
+  const returnInput = page.getByLabel("USB return input");
 
   await dvs1Switch.click();
   await faderA.selectOption("CH 1");
   await faderB.selectOption("CH 1");
   await postFader.selectOption("CH 1");
+  await returnInput.selectOption("USB 1/2");
   await clearMidiMessages(page);
 
   await dvs1Switch.click();
@@ -95,10 +97,14 @@ test("reroutes and disables analog sources when enabling DVS", async ({ page }) 
   await expect(faderA.locator('option[value="CH 1"]')).toHaveAttribute("disabled", "");
   await expect(faderB.locator('option[value="CH 1"]')).toHaveAttribute("disabled", "");
   await expect(postFader.locator('option[value="CH 1"]')).toHaveAttribute("disabled", "");
+  await expect(returnInput).toHaveValue("None");
+  await expect(returnInput.locator('option[value="USB 1/2"]')).toHaveAttribute("disabled", "");
+  await expect(returnInput.locator('option[value="USB 3/4"]')).not.toBeDisabled();
   expect(await midiMessages(page)).toEqual([
     [0xce, 6],
     [0xce, 10],
     [0xce, 14],
+    [0xce, 22],
     [0xce, 17],
   ]);
 
@@ -106,6 +112,7 @@ test("reroutes and disables analog sources when enabling DVS", async ({ page }) 
   await faderA.selectOption("CH 2");
   await faderB.selectOption("CH 2");
   await postFader.selectOption("CH 2");
+  await returnInput.selectOption("USB 3/4");
   await clearMidiMessages(page);
 
   await dvs2Switch.click();
@@ -116,10 +123,14 @@ test("reroutes and disables analog sources when enabling DVS", async ({ page }) 
   await expect(faderA.locator('option[value="CH 2"]')).toHaveAttribute("disabled", "");
   await expect(faderB.locator('option[value="CH 2"]')).toHaveAttribute("disabled", "");
   await expect(postFader.locator('option[value="CH 2"]')).toHaveAttribute("disabled", "");
+  await expect(returnInput).toHaveValue("None");
+  await expect(returnInput.locator('option[value="USB 1/2"]')).toHaveAttribute("disabled", "");
+  await expect(returnInput.locator('option[value="USB 3/4"]')).toHaveAttribute("disabled", "");
   expect(await midiMessages(page)).toEqual([
     [0xce, 7],
     [0xce, 11],
     [0xce, 15],
+    [0xce, 22],
     [0xce, 19],
   ]);
 });
@@ -134,7 +145,7 @@ test("connects to JUMBLEQ and reflects the complete initial sync", async ({ page
   await expect(page.getByRole("article", { name: "Channel 1 input" }).getByRole("switch", { name: "Channel 1 DVS" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("combobox", { name: "Fader A", exact: true })).toHaveValue("USB 3/4");
   await expect(page.getByLabel("Headphone monitor source")).toHaveValue("Fader B");
-  await expect(page.getByLabel("USB return input")).toHaveValue("USB 1/2");
+  await expect(page.getByLabel("USB return input")).toHaveValue("None");
   await expect(page.getByRole("button", { name: "MIDI note" })).toHaveClass(/active/);
   await expect(page.getByLabel("Fader A curve sharpness")).toHaveValue("25");
   await expect(page.getByLabel("Fader B curve sharpness")).toHaveValue("75");
@@ -149,6 +160,7 @@ test("sends setting, curve edit, and EEPROM save messages", async ({ page }) => 
   await page.getByRole("group", { name: "Channel 1 input type" }).getByRole("button", { name: "PHONO" }).click();
   await page.getByRole("combobox", { name: "Fader A", exact: true }).selectOption("USB 3/4");
   await page.getByRole("switch", { name: "Channel 1 DVS" }).click();
+  await page.getByLabel("USB return input").selectOption("None");
   const curveA = page.getByLabel("Fader A curve sharpness");
   await curveA.fill("80");
   await curveA.blur();
@@ -159,6 +171,7 @@ test("sends setting, curve edit, and EEPROM save messages", async ({ page }) => 
     [0xce, 1],
     [0xce, 7],
     [0xce, 16],
+    [0xce, 22],
     [0xce, 121],
     [0xbe, 20, 102],
     [0xce, 120],
@@ -241,6 +254,7 @@ test("imports a validated preset and exports the same settings", async ({ page }
   await expect(page.getByText("Preset imported into the preview.")).toBeVisible();
   await expect(page.getByRole("group", { name: "Channel 1 input type" }).getByRole("button", { name: "PHONO" })).toHaveClass(/active/);
   await expect(page.getByRole("combobox", { name: "Fader A", exact: true })).toHaveValue("USB 1/2");
+  await expect(page.getByLabel("USB return input")).toHaveValue("None");
   await expect(page.getByLabel("Headphone monitor source")).toHaveValue("Thru");
   await expect(page.getByLabel("Fader A curve sharpness")).toHaveValue("35");
   await expect(page.getByLabel("Fader B curve sharpness")).toHaveValue("65");

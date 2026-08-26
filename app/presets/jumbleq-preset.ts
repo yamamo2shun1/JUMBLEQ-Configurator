@@ -2,7 +2,7 @@ import type { JumbleqConfig } from "../midi/jumbleq-midi";
 
 const inputTypes = ["LINE", "PHONO"] as const;
 const sources = ["CH 1", "CH 2", "USB 1/2", "USB 3/4"] as const;
-const returnSources = ["USB 1/2", "USB 3/4"] as const;
+const returnSources = ["USB 1/2", "USB 3/4", "None"] as const;
 const headphoneSources = ["Fader A", "Fader B", "Thru", "Master"] as const;
 const auxiliarySides = ["A", "B"] as const;
 const magneticModes = ["CC", "NOTE"] as const;

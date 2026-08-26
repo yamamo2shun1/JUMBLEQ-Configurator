@@ -12,7 +12,7 @@ const validPreset = {
   assignPost: "USB 3/4",
   dvs1: true,
   dvs2: false,
-  returnSource: "USB 1/2",
+  returnSource: "None",
   headphoneSource: "Fader B",
   sensor2: "B",
   sensor3: "A",
