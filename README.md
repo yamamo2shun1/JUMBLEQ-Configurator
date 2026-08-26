@@ -43,6 +43,6 @@ Use `npm run test:all` to run all validation steps in sequence.
 
 ## Deploy Now
 
-`next.config.ts` sets `output: "standalone"`, as required by Deploy Now. The `postbuild` script includes the public files and Next.js static assets in the standalone output. When deploying from the repository root, set the application root to `WebConfigurator`.
+`next.config.ts` sets `output: "standalone"`, as required by Deploy Now. The `postbuild` script includes the public files and Next.js static assets in the standalone output. Use the repository root as the application root when deploying.
 
 For deployment, follow the official LOLIPOP! instructions to log in through the CLI and deploy the project as a Next.js application.
