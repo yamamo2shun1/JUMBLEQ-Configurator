@@ -12,7 +12,7 @@ export function evaluateFaderCurve(cc: number, t: number) {
     return normalizedPosition;
   }
 
-  const k = FADER_CURVE_EXPONENT_MAX * magnitude;
+  const k = FADER_CURVE_EXPONENT_MAX * magnitude * magnitude * magnitude;
   const denominator = -Math.expm1(-k);
   const y = amount > 0
     ? -Math.expm1(-k * normalizedPosition) / denominator
