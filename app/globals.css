@@ -118,6 +118,13 @@ button { color: inherit; }
 .curve-controls label { display: grid; gap: 11px; }
 .curve-controls label > span { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
 .curve-controls b { font-weight: 650; }.curve-controls output { color: #9b9e94; font: 600 10px/1 var(--font-geist-mono); }
+.curve-control { display: grid; gap: 14px; }
+.fader-reverse-setting { padding-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #30312c; }
+.fader-reverse-setting > span { display: flex; align-items: baseline; gap: 8px; }
+.fader-reverse-setting b { color: #d5d6cf; font: 650 9px/1 var(--font-geist-mono); letter-spacing: .06em; text-transform: uppercase; }
+.fader-reverse-setting small { color: #777a71; font: 600 9px/1 var(--font-geist-mono); text-transform: uppercase; }
+.curve-control-b .reverse-switch.on { border-color: rgba(77,232,208,.5); background: rgba(77,232,208,.16); }
+.curve-control-b .reverse-switch.on i { background: var(--cyan); box-shadow: 0 0 8px rgba(77,232,208,.4); }
 input[type="range"] { --range-color: var(--jumble); width: 100%; height: 4px; appearance: none; border-radius: 9px; background: #393a35; cursor: pointer; accent-color: var(--range-color); }
 input[type="range"]::-webkit-slider-thumb { appearance: none; width: 17px; height: 17px; border-radius: 50%; background: var(--range-color); border: 4px solid #1c1d1a; box-shadow: 0 0 0 1px var(--range-color); }
 .range-b { --range-color: var(--cyan) !important; }

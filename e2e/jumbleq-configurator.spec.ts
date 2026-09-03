@@ -24,6 +24,8 @@ const importedPreset = {
   magMode: "NOTE",
   curveA: 35,
   curveB: 65,
+  reverseA: true,
+  reverseB: false,
 };
 
 test.beforeEach(async ({ page }) => {
@@ -45,7 +47,7 @@ test("shows the verified iPad MIDIWeb Browser guidance", async ({ page }) => {
 test("groups audio routing and MIDI controls by function", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Configurator sections" });
   await expect(navigation.getByRole("link")).toHaveText(["Audio", "MIDI", "Device"]);
-  await expect(page.getByText("Configurator preview · v0.9.2")).toBeVisible();
+  await expect(page.getByText("Configurator preview · v0.9.3")).toBeVisible();
 
   const audioSettings = page.locator("#audio");
   await expect(page.getByRole("heading", { name: "Audio settings" })).toBeVisible();
@@ -140,7 +142,7 @@ test("connects to JUMBLEQ and reflects the complete initial sync", async ({ page
 
   await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
   await expect(page.getByText("Current settings loaded from JUMBLEQ")).toBeVisible();
-  await expect(page.getByText("14/14 synced")).toBeVisible();
+  await expect(page.getByText("16/16 synced")).toBeVisible();
   await expect(page.getByRole("group", { name: "Channel 2 input type" }).getByRole("button", { name: "PHONO" })).toHaveClass(/active/);
   await expect(page.getByRole("article", { name: "Channel 1 input" }).getByRole("switch", { name: "Channel 1 DVS" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("combobox", { name: "Fader A", exact: true })).toHaveValue("USB 3/4");
@@ -149,6 +151,10 @@ test("connects to JUMBLEQ and reflects the complete initial sync", async ({ page
   await expect(page.getByRole("button", { name: "MIDI note" })).toHaveClass(/active/);
   await expect(page.getByLabel("Fader A curve sharpness")).toHaveValue("25");
   await expect(page.getByLabel("Fader B curve sharpness")).toHaveValue("75");
+  await expect(page.getByRole("switch", { name: "Fader A reverse" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("switch", { name: "Fader B reverse" })).toHaveAttribute("aria-checked", "false");
+  await expect(page.locator(".curve-control-a .fader-reverse-setting")).toContainText("Reverse");
+  await expect(page.locator(".curve-control-b .fader-reverse-setting")).toContainText("Normal");
   expect(await midiMessages(page)).toContainEqual([0xce, 126]);
 });
 
@@ -164,6 +170,8 @@ test("sends setting, curve edit, and EEPROM save messages", async ({ page }) => 
   const curveA = page.getByLabel("Fader A curve sharpness");
   await curveA.fill("80");
   await curveA.blur();
+  await page.getByRole("switch", { name: "Fader A reverse" }).click();
+  await page.getByRole("switch", { name: "Fader B reverse" }).click();
   await page.getByRole("button", { name: "Save to device" }).click();
 
   await expect(page.getByText("Save command sent to JUMBLEQ")).toBeVisible();
@@ -175,6 +183,8 @@ test("sends setting, curve edit, and EEPROM save messages", async ({ page }) => 
     [0xce, 121],
     [0xbe, 20, 102],
     [0xce, 120],
+    [0xce, 31],
+    [0xce, 34],
     [0xce, 127],
   ]));
 });
@@ -240,7 +250,7 @@ test("automatically reconnects and synchronizes after a USB interruption", async
   await reconnectMockDevice(page);
 
   await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
-  await expect(page.getByText("14/14 synced")).toBeVisible();
+  await expect(page.getByText("16/16 synced")).toBeVisible();
   expect(await midiMessages(page)).toContainEqual([0xce, 126]);
 });
 
@@ -258,6 +268,8 @@ test("imports a validated preset and exports the same settings", async ({ page }
   await expect(page.getByLabel("Headphone monitor source")).toHaveValue("Thru");
   await expect(page.getByLabel("Fader A curve sharpness")).toHaveValue("35");
   await expect(page.getByLabel("Fader B curve sharpness")).toHaveValue("65");
+  await expect(page.getByRole("switch", { name: "Fader A reverse" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("switch", { name: "Fader B reverse" })).toHaveAttribute("aria-checked", "false");
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export preset" }).click();

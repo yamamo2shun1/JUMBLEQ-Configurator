@@ -49,8 +49,10 @@ test("restore defaults contain one value for every synchronized field", () => {
     "magMode",
     "curveA",
     "curveB",
+    "reverseA",
+    "reverseB",
   ]);
-  assert.equal(SYNC_FIELD_COUNT, 14);
+  assert.equal(SYNC_FIELD_COUNT, 16);
   assert.deepEqual(Object.keys(RESTORE_DEFAULT_CONFIG).sort(), [...SYNC_FIELDS].sort());
   assert.deepEqual(RESTORE_DEFAULT_CONFIG, {
     ch1Type: "LINE",
@@ -67,6 +69,8 @@ test("restore defaults contain one value for every synchronized field", () => {
     magMode: "CC",
     curveA: 50,
     curveB: 50,
+    reverseA: false,
+    reverseB: false,
   });
 });
 
@@ -102,6 +106,10 @@ const programSettingCases = [
   ["sensor2", "B", 28],
   ["sensor3", "A", 29],
   ["sensor3", "B", 30],
+  ["reverseA", false, 31],
+  ["reverseA", true, 32],
+  ["reverseB", false, 33],
+  ["reverseB", true, 34],
   ["magMode", "CC", 122],
   ["magMode", "NOTE", 123],
 ];
@@ -118,6 +126,7 @@ test("program encoder rejects values that could otherwise select another setting
   assert.throws(() => encodeProgramSetting("ch1Type", "MIC"), /Invalid value for ch1Type/);
   assert.throws(() => encodeProgramSetting("assignA", "INVALID"), /Invalid value for assignA/);
   assert.throws(() => encodeProgramSetting("dvs1", 1), /Invalid value for dvs1/);
+  assert.throws(() => encodeProgramSetting("reverseA", "true"), /Invalid value for reverseA/);
   assert.throws(() => encodeProgramSetting("magMode", "POLY"), /Invalid value for magMode/);
   assert.throws(() => encodeProgramSetting("unknown", "LINE"), /Unknown setting field/);
 });
@@ -164,7 +173,7 @@ test("decoder ignores incomplete, unrelated, and wrong-channel MIDI messages", (
     [],
     [PROGRAM_CHANGE_CH_15],
     [0xc0, 0],
-    [PROGRAM_CHANGE_CH_15, 31],
+    [PROGRAM_CHANGE_CH_15, 35],
     [CONTROL_CHANGE_CH_15, 20],
     [CONTROL_CHANGE_CH_15, 22, 64],
     [0xb0, 20, 64],
