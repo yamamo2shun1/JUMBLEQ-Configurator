@@ -32,6 +32,10 @@ function booleanValue(preset: Record<string, unknown>, field: string): boolean {
   return value;
 }
 
+function optionalBooleanValue(preset: Record<string, unknown>, field: string): boolean {
+  return preset[field] === undefined ? false : booleanValue(preset, field);
+}
+
 function curveValue(preset: Record<string, unknown>, field: string): number {
   const value = preset[field];
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 100) {
@@ -64,6 +68,8 @@ export function parseJumbleqPreset(text: string): JumbleqConfig {
     magMode: enumValue(preset, "magMode", magneticModes),
     curveA: curveValue(preset, "curveA"),
     curveB: curveValue(preset, "curveB"),
+    reverseA: optionalBooleanValue(preset, "reverseA"),
+    reverseB: optionalBooleanValue(preset, "reverseB"),
   };
 }
 

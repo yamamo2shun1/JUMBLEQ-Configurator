@@ -27,6 +27,8 @@ export type JumbleqConfig = {
   magMode: MagneticMode;
   curveA: number;
   curveB: number;
+  reverseA: boolean;
+  reverseB: boolean;
 };
 
 export const RESTORE_DEFAULT_CONFIG: JumbleqConfig = {
@@ -44,6 +46,8 @@ export const RESTORE_DEFAULT_CONFIG: JumbleqConfig = {
   magMode: "CC",
   curveA: 50,
   curveB: 50,
+  reverseA: false,
+  reverseB: false,
 };
 
 export type SyncField = keyof JumbleqConfig;
@@ -64,6 +68,8 @@ export const SYNC_FIELDS: readonly SyncField[] = [
   "magMode",
   "curveA",
   "curveB",
+  "reverseA",
+  "reverseB",
 ];
 
 export const SYNC_FIELD_COUNT = SYNC_FIELDS.length;
@@ -137,6 +143,8 @@ export function encodeProgramSetting(
     case "headphoneSource": program = 23 + settingIndex(field, value, headphoneSources); break;
     case "sensor2": program = 27 + settingIndex(field, value, auxiliarySides); break;
     case "sensor3": program = 29 + settingIndex(field, value, auxiliarySides); break;
+    case "reverseA": program = 31 + booleanIndex(field, value); break;
+    case "reverseB": program = 33 + booleanIndex(field, value); break;
     case "magMode": program = 122 + settingIndex(field, value, magneticModes); break;
     default: throw new Error(`Unknown setting field: ${String(field)}.`);
   }
@@ -165,6 +173,8 @@ function decodeProgramChange(program: number): DecodedConfigValue | null {
   if (program <= 26) return { field: "headphoneSource", value: headphoneSources[program - 23] };
   if (program <= 28) return { field: "sensor2", value: auxiliarySides[program - 27] };
   if (program <= 30) return { field: "sensor3", value: auxiliarySides[program - 29] };
+  if (program <= 32) return { field: "reverseA", value: program === 32 };
+  if (program <= 34) return { field: "reverseB", value: program === 34 };
   if (program === 122 || program === 123) return { field: "magMode", value: program === 122 ? "CC" : "NOTE" };
   return null;
 }

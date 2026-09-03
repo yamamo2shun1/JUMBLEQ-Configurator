@@ -19,6 +19,8 @@ const validPreset = {
   magMode: "NOTE",
   curveA: 0,
   curveB: 100,
+  reverseA: true,
+  reverseB: false,
 };
 
 test("current flat preset format serializes and parses without data loss", () => {
@@ -45,11 +47,22 @@ test("parser rejects malformed JSON and non-object roots", () => {
 });
 
 test("parser rejects every missing required field", () => {
-  for (const field of Object.keys(validPreset)) {
+  for (const field of Object.keys(validPreset).filter((field) => field !== "reverseA" && field !== "reverseB")) {
     const incomplete = { ...validPreset };
     delete incomplete[field];
     assert.throws(() => parseJumbleqPreset(JSON.stringify(incomplete)), new RegExp(field), field);
   }
+});
+
+test("legacy presets default missing reverse settings to off", () => {
+  const legacyPreset = Object.fromEntries(
+    Object.entries(validPreset).filter(([field]) => field !== "reverseA" && field !== "reverseB"),
+  );
+  assert.deepEqual(parseJumbleqPreset(JSON.stringify(legacyPreset)), {
+    ...legacyPreset,
+    reverseA: false,
+    reverseB: false,
+  });
 });
 
 test("parser rejects unsupported enum values", () => {
@@ -78,6 +91,11 @@ test("parser rejects unsupported enum values", () => {
 test("parser requires real boolean DVS values", () => {
   assert.throws(() => parseJumbleqPreset(JSON.stringify({ ...validPreset, dvs1: 1 })), /dvs1/);
   assert.throws(() => parseJumbleqPreset(JSON.stringify({ ...validPreset, dvs2: "false" })), /dvs2/);
+});
+
+test("parser requires real boolean reverse values when present", () => {
+  assert.throws(() => parseJumbleqPreset(JSON.stringify({ ...validPreset, reverseA: 1 })), /reverseA/);
+  assert.throws(() => parseJumbleqPreset(JSON.stringify({ ...validPreset, reverseB: "false" })), /reverseB/);
 });
 
 test("parser accepts only integer curve percentages from 0 through 100", () => {
