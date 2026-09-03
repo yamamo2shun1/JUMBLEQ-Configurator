@@ -555,7 +555,7 @@ export default function Home() {
               <span>{connected ? "USB MIDI · Synced" : reconnecting ? "Waiting for USB" : midiStatus === "syncing" ? `Reading ${syncReceived}/${SYNC_FIELD_COUNT}` : "Connect via USB"}</span>
             </div>
           </div>
-          <span className="version">Configurator preview · v0.9.4</span>
+          <span className="version">Configurator preview · v0.9.5</span>
         </aside>
 
         {menuOpen && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}

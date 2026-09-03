@@ -38,6 +38,16 @@ test("CC127 reaches approximately 0.9 at two percent travel", () => {
   assert.ok(Math.abs(evaluateFaderCurve(127, 0.02) - 0.9) < 1e-9);
 });
 
+test("intermediate CC values use the cubed curve magnitude", () => {
+  const cc = 96;
+  const t = 0.25;
+  const magnitude = (cc - 64) / 63;
+  const k = 115.12925465 * magnitude * magnitude * magnitude;
+  const expected = -Math.expm1(-k * t) / -Math.expm1(-k);
+
+  assert.ok(Math.abs(evaluateFaderCurve(cc, t) - expected) < 1e-12);
+});
+
 test("curve paths sample the plot width and include both endpoints", () => {
   const path = createFaderCurvePath(64, 284, 124, 18, 144);
   const points = path.split(/(?=[ML] )/);
