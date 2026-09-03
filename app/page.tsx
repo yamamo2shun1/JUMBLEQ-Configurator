@@ -23,6 +23,7 @@ import {
   Usb,
   X,
 } from "lucide-react";
+import { createFaderCurvePath } from "./fader-curve";
 import { curvePercentToMidiCC, JumbleqConfig, ProgramSettingField, RESTORE_DEFAULT_CONFIG, ReturnSource, Source, SYNC_FIELD_COUNT } from "./midi/jumbleq-midi";
 import { useJumbleqMidi, type MagneticActivity, type MidiStatus } from "./midi/use-jumbleq-midi";
 import { parseJumbleqPreset, serializeJumbleqPreset } from "./presets/jumbleq-preset";
@@ -35,40 +36,6 @@ const sourceLabels: Record<Source, string> = {
   "USB 3/4": "USB 3/4",
 };
 const MAX_PRESET_FILE_BYTES = 64 * 1024;
-
-const CURVE_WIDTH_MIN = 0.02;
-const CURVE_WIDTH_MAX = 0.60;
-const CURVE_LINEAR_BLEND = 0.60;
-
-function clamp01(value: number) {
-  return Math.min(1, Math.max(0, value));
-}
-
-function curvePercentToWidth(percent: number) {
-  const midiCC = curvePercentToMidiCC(percent);
-  const normalized = midiCC / 127;
-  return CURVE_WIDTH_MAX + ((CURVE_WIDTH_MIN - CURVE_WIDTH_MAX) * normalized);
-}
-
-function evaluateFirmwareCurve(normalizedPosition: number, curvePercent: number) {
-  const width = curvePercentToWidth(curvePercent);
-  const position = clamp01(normalizedPosition) * CURVE_WIDTH_MAX;
-  const t = clamp01(position / width);
-  const smootherstep = t * t * t * (t * ((t * 6) - 15) + 10);
-  return (CURVE_LINEAR_BLEND * t) + ((1 - CURVE_LINEAR_BLEND) * smootherstep);
-}
-
-function createCurvePath(curvePercent: number, reverse = false) {
-  const pointCount = 64;
-  return Array.from({ length: pointCount + 1 }, (_, index) => {
-    const xNormalized = index / pointCount;
-    const curvePosition = reverse ? 1 - xNormalized : xNormalized;
-    const gain = evaluateFirmwareCurve(curvePosition, curvePercent);
-    const x = 18 + (284 * xNormalized);
-    const y = 144 - (124 * gain);
-    return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-  }).join(" ");
-}
 
 function SourceSelect({
   label,
@@ -139,8 +106,14 @@ function MidiHardwareKey({
 }
 
 function CurveGraph({ curveA, curveB, reverseA, reverseB }: { curveA: number; curveB: number; reverseA: boolean; reverseB: boolean }) {
-  const pathA = useMemo(() => createCurvePath(curveA, reverseA), [curveA, reverseA]);
-  const pathB = useMemo(() => createCurvePath(curveB, !reverseB), [curveB, reverseB]);
+  const pathA = useMemo(
+    () => createFaderCurvePath(curvePercentToMidiCC(curveA), 284, 124, 18, 144, !reverseA),
+    [curveA, reverseA],
+  );
+  const pathB = useMemo(
+    () => createFaderCurvePath(curvePercentToMidiCC(curveB), 284, 124, 18, 144, reverseB),
+    [curveB, reverseB],
+  );
 
   return (
     <svg className="curve-graph" viewBox="0 0 320 164" role="img" aria-label="Channel fader response curves">
@@ -158,10 +131,10 @@ function CurveGraph({ curveA, curveB, reverseA, reverseB }: { curveA: number; cu
       ))}
       <path d={pathA} className="curve-line curve-a" />
       <path d={pathB} className="curve-line curve-b" />
-      <circle cx="18" cy="144" r="3.5" className="dot-a" />
-      <circle cx="302" cy="20" r="3.5" className="dot-a" />
-      <circle cx="18" cy="20" r="3.5" className="dot-b" />
-      <circle cx="302" cy="144" r="3.5" className="dot-b" />
+      <circle cx="18" cy={reverseA ? 144 : 20} r="3.5" className="dot-a" />
+      <circle cx="302" cy={reverseA ? 20 : 144} r="3.5" className="dot-a" />
+      <circle cx="18" cy={reverseB ? 20 : 144} r="3.5" className="dot-b" />
+      <circle cx="302" cy={reverseB ? 144 : 20} r="3.5" className="dot-b" />
     </svg>
   );
 }
@@ -582,7 +555,7 @@ export default function Home() {
               <span>{connected ? "USB MIDI · Synced" : reconnecting ? "Waiting for USB" : midiStatus === "syncing" ? `Reading ${syncReceived}/${SYNC_FIELD_COUNT}` : "Connect via USB"}</span>
             </div>
           </div>
-          <span className="version">Configurator preview · v0.9.3</span>
+          <span className="version">Configurator preview · v0.9.4</span>
         </aside>
 
         {menuOpen && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
@@ -637,15 +610,15 @@ export default function Home() {
           </section>
 
           <section className="curve-card" id="channel-faders">
-            <div className="curve-copy"><p className="card-label">CHANNEL FADERS</p><h2>Response curves</h2><p>0% gives the widest response. 100% gives the sharpest cut.</p>{hasOpenPorts && <div className={`curve-edit-status ${curveEditActive ? "active" : ""}`}><span />{curveEditActive ? "Curve edit active" : "Ready to edit"}</div>}<div className="legend"><span><i className="legend-a" />Fader A</span><span><i className="legend-b" />Fader B</span></div></div>
+            <div className="curve-copy"><p className="card-label">CHANNEL FADERS</p><h2>Response curves</h2><p>0 (late) - 64 (linear) - 127 (early)</p>{hasOpenPorts && <div className={`curve-edit-status ${curveEditActive ? "active" : ""}`}><span />{curveEditActive ? "Curve edit active" : "Ready to edit"}</div>}<div className="legend"><span><i className="legend-a" />Fader A</span><span><i className="legend-b" />Fader B</span></div></div>
             <CurveGraph curveA={curveA} curveB={curveB} reverseA={reverseA} reverseB={reverseB} />
             <div className="curve-controls">
               <div className="curve-control curve-control-a">
-                <label htmlFor="curve-a"><span><b>Fader A</b><output htmlFor="curve-a" title={`MIDI CC ${curvePercentToMidiCC(curveA)} · width ${curvePercentToWidth(curveA).toFixed(3)}`}>{curveA}%</output></span><input id="curve-a" aria-label="Fader A curve sharpness" className="range-a" type="range" min="0" max="100" value={curveA} onFocus={() => hasOpenPorts && beginCurveEdit()} onPointerDown={() => hasOpenPorts && beginCurveEdit()} onChange={(event) => updateCurve(setCurveA, "curveA", Number(event.target.value))} onBlur={() => hasOpenPorts && endCurveEdit()} onPointerUp={() => hasOpenPorts && endCurveEdit()} onPointerCancel={() => hasOpenPorts && endCurveEdit()} /></label>
+                <label htmlFor="curve-a"><span><b>Fader A</b><output htmlFor="curve-a">CC {curvePercentToMidiCC(curveA)}</output></span><input id="curve-a" aria-label="Fader A curve" className="range-a" type="range" min="0" max="100" value={curveA} onFocus={() => hasOpenPorts && beginCurveEdit()} onPointerDown={() => hasOpenPorts && beginCurveEdit()} onChange={(event) => updateCurve(setCurveA, "curveA", Number(event.target.value))} onBlur={() => hasOpenPorts && endCurveEdit()} onPointerUp={() => hasOpenPorts && endCurveEdit()} onPointerCancel={() => hasOpenPorts && endCurveEdit()} /></label>
                 <div className="fader-reverse-setting"><span><b>Direction</b><small>{reverseA ? "Reverse" : "Normal"}</small></span><button className={`switch reverse-switch ${reverseA ? "on" : ""}`} type="button" role="switch" aria-label="Fader A reverse" aria-checked={reverseA} onClick={() => updateProgram(setReverseA, "reverseA", !reverseA)}><i /></button></div>
               </div>
               <div className="curve-control curve-control-b">
-                <label htmlFor="curve-b"><span><b>Fader B</b><output htmlFor="curve-b" title={`MIDI CC ${curvePercentToMidiCC(curveB)} · width ${curvePercentToWidth(curveB).toFixed(3)}`}>{curveB}%</output></span><input id="curve-b" aria-label="Fader B curve sharpness" className="range-b" type="range" min="0" max="100" value={curveB} onFocus={() => hasOpenPorts && beginCurveEdit()} onPointerDown={() => hasOpenPorts && beginCurveEdit()} onChange={(event) => updateCurve(setCurveB, "curveB", Number(event.target.value))} onBlur={() => hasOpenPorts && endCurveEdit()} onPointerUp={() => hasOpenPorts && endCurveEdit()} onPointerCancel={() => hasOpenPorts && endCurveEdit()} /></label>
+                <label htmlFor="curve-b"><span><b>Fader B</b><output htmlFor="curve-b">CC {curvePercentToMidiCC(curveB)}</output></span><input id="curve-b" aria-label="Fader B curve" className="range-b" type="range" min="0" max="100" value={curveB} onFocus={() => hasOpenPorts && beginCurveEdit()} onPointerDown={() => hasOpenPorts && beginCurveEdit()} onChange={(event) => updateCurve(setCurveB, "curveB", Number(event.target.value))} onBlur={() => hasOpenPorts && endCurveEdit()} onPointerUp={() => hasOpenPorts && endCurveEdit()} onPointerCancel={() => hasOpenPorts && endCurveEdit()} /></label>
                 <div className="fader-reverse-setting"><span><b>Direction</b><small>{reverseB ? "Reverse" : "Normal"}</small></span><button className={`switch reverse-switch ${reverseB ? "on" : ""}`} type="button" role="switch" aria-label="Fader B reverse" aria-checked={reverseB} onClick={() => updateProgram(setReverseB, "reverseB", !reverseB)}><i /></button></div>
               </div>
             </div>

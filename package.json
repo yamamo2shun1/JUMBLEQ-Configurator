@@ -1,6 +1,6 @@
 {
   "name": "jumbleq-configurator",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -13,7 +13,7 @@
     "test": "npm run test:unit && npm run lint && npm run build",
     "test:all": "npm test && npm run test:e2e",
     "test:e2e": "playwright test",
-    "test:unit": "node --experimental-strip-types --test tests/jumbleq-midi.test.mjs tests/jumbleq-preset.test.mjs tests/midi-port-selection.test.mjs",
+    "test:unit": "node --experimental-strip-types --test tests/fader-curve.test.mjs tests/jumbleq-midi.test.mjs tests/jumbleq-preset.test.mjs tests/midi-port-selection.test.mjs",
     "lint": "eslint . --ignore-pattern .next"
   },
   "dependencies": {
