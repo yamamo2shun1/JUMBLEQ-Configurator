@@ -47,7 +47,7 @@ test("shows the verified iPad MIDIWeb Browser guidance", async ({ page }) => {
 test("groups audio routing and MIDI controls by function", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Configurator sections" });
   await expect(navigation.getByRole("link")).toHaveText(["Audio", "MIDI", "Device"]);
-  await expect(page.getByText("Configurator preview · v0.9.3")).toBeVisible();
+  await expect(page.getByText("Configurator preview · v0.9.4")).toBeVisible();
 
   const audioSettings = page.locator("#audio");
   await expect(page.getByRole("heading", { name: "Audio settings" })).toBeVisible();
@@ -63,6 +63,34 @@ test("groups audio routing and MIDI controls by function", async ({ page }) => {
   await expect(midiSettings.getByRole("heading", { name: "MIDI settings" })).toBeVisible();
   await expect(midiSettings.getByRole("heading", { name: "Magnetic switches" })).toBeVisible();
   await expect(midiSettings.getByRole("heading", { name: "Monitor routing" })).toHaveCount(0);
+});
+
+test("draws independent firmware curves with opposite A/B directions", async ({ page }) => {
+  const curveA = page.getByLabel("Fader A curve", { exact: true });
+  const curveB = page.getByLabel("Fader B curve", { exact: true });
+
+  await expect(page.getByText("0 (late) - 64 (linear) - 127 (early)", { exact: true })).toBeVisible();
+  await curveA.fill("0");
+  await curveB.fill("100");
+
+  const pathANormal = await page.locator(".curve-a").getAttribute("d");
+  const pathBNormal = await page.locator(".curve-b").getAttribute("d");
+  expect(pathANormal).not.toBe(pathBNormal);
+  expect(pathANormal).toMatch(/^M 18\.00 20\.00 /);
+  expect(pathANormal).toMatch(/L 302\.00 144\.00$/);
+  expect(pathBNormal).toMatch(/^M 18\.00 144\.00 /);
+  expect(pathBNormal).toMatch(/L 302\.00 20\.00$/);
+  await expect(page.locator(".curve-control-a output")).toHaveText("CC 0");
+  await expect(page.locator(".curve-control-b output")).toHaveText("CC 127");
+
+  await page.getByRole("switch", { name: "Fader A reverse" }).click();
+  await page.getByRole("switch", { name: "Fader B reverse" }).click();
+  const pathAReverse = await page.locator(".curve-a").getAttribute("d");
+  const pathBReverse = await page.locator(".curve-b").getAttribute("d");
+  expect(pathAReverse).toMatch(/^M 18\.00 144\.00 /);
+  expect(pathAReverse).toMatch(/L 302\.00 20\.00$/);
+  expect(pathBReverse).toMatch(/^M 18\.00 20\.00 /);
+  expect(pathBReverse).toMatch(/L 302\.00 144\.00$/);
 });
 
 test("labels physical routing sources as analog inputs", async ({ page }) => {
@@ -149,8 +177,8 @@ test("connects to JUMBLEQ and reflects the complete initial sync", async ({ page
   await expect(page.getByLabel("Headphone monitor source")).toHaveValue("Fader B");
   await expect(page.getByLabel("USB return input")).toHaveValue("None");
   await expect(page.getByRole("button", { name: "MIDI note" })).toHaveClass(/active/);
-  await expect(page.getByLabel("Fader A curve sharpness")).toHaveValue("25");
-  await expect(page.getByLabel("Fader B curve sharpness")).toHaveValue("75");
+  await expect(page.getByLabel("Fader A curve", { exact: true })).toHaveValue("25");
+  await expect(page.getByLabel("Fader B curve", { exact: true })).toHaveValue("75");
   await expect(page.getByRole("switch", { name: "Fader A reverse" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("switch", { name: "Fader B reverse" })).toHaveAttribute("aria-checked", "false");
   await expect(page.locator(".curve-control-a .fader-reverse-setting")).toContainText("Reverse");
@@ -167,7 +195,7 @@ test("sends setting, curve edit, and EEPROM save messages", async ({ page }) => 
   await page.getByRole("combobox", { name: "Fader A", exact: true }).selectOption("USB 3/4");
   await page.getByRole("switch", { name: "Channel 1 DVS" }).click();
   await page.getByLabel("USB return input").selectOption("None");
-  const curveA = page.getByLabel("Fader A curve sharpness");
+  const curveA = page.getByLabel("Fader A curve", { exact: true });
   await curveA.fill("80");
   await curveA.blur();
   await page.getByRole("switch", { name: "Fader A reverse" }).click();
@@ -266,8 +294,8 @@ test("imports a validated preset and exports the same settings", async ({ page }
   await expect(page.getByRole("combobox", { name: "Fader A", exact: true })).toHaveValue("USB 1/2");
   await expect(page.getByLabel("USB return input")).toHaveValue("None");
   await expect(page.getByLabel("Headphone monitor source")).toHaveValue("Thru");
-  await expect(page.getByLabel("Fader A curve sharpness")).toHaveValue("35");
-  await expect(page.getByLabel("Fader B curve sharpness")).toHaveValue("65");
+  await expect(page.getByLabel("Fader A curve", { exact: true })).toHaveValue("35");
+  await expect(page.getByLabel("Fader B curve", { exact: true })).toHaveValue("65");
   await expect(page.getByRole("switch", { name: "Fader A reverse" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("switch", { name: "Fader B reverse" })).toHaveAttribute("aria-checked", "false");
 

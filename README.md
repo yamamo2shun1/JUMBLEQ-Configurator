@@ -47,4 +47,12 @@ Use `npm run test:all` to run all validation steps in sequence.
 
 `next.config.ts` sets `output: "standalone"`, as required by Deploy Now. The `postbuild` script includes the public files and Next.js static assets in the standalone output. Use the repository root as the application root when deploying.
 
-For deployment, follow the official LOLIPOP! instructions to log in through the CLI and deploy the project as a Next.js application.
+The `.github/workflows/deploy.yml` workflow validates and deploys the application whenever a commit is pushed to `main`, including when a pull request is merged. It deploys to the existing `jumbleq-configurator` Deploy Now project.
+
+Before enabling the workflow, add the local Deploy Now credentials as the repository secret `LOLIPOP_CREDENTIALS_BASE64`. On Windows, with the GitHub CLI installed and authenticated, run this PowerShell command from any directory:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:APPDATA\lolipop\credentials.json")) | gh secret set LOLIPOP_CREDENTIALS_BASE64 --repo yamamo2shun1/JUMBLEQ-Configurator
+```
+
+The workflow restores the credentials only for the deploy job and restricts the generated file to the current runner user. The secret must be refreshed if the Deploy Now session is revoked or expires.
