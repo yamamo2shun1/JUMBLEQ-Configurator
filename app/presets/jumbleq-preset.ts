@@ -6,6 +6,13 @@ const returnSources = ["USB 1/2", "USB 3/4", "None"] as const;
 const headphoneSources = ["Fader A", "Fader B", "Thru", "Master"] as const;
 const auxiliarySides = ["A", "B"] as const;
 const magneticModes = ["CC", "NOTE"] as const;
+const DVS_FADER_DELAY_DEFAULT_MS = 50;
+const DVS_FADER_DELAY_MIN_MS = 0;
+const DVS_FADER_DELAY_MAX_MS = 120;
+
+function normalizeDvsFaderDelayMs(value: number) {
+  return Math.min(DVS_FADER_DELAY_MAX_MS, Math.max(DVS_FADER_DELAY_MIN_MS, Math.round(value)));
+}
 
 function presetObject(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -44,6 +51,20 @@ function curveValue(preset: Record<string, unknown>, field: string): number {
   return value;
 }
 
+function dvsFaderDelayValue(preset: Record<string, unknown>): number {
+  const value = preset.dvsFaderDelayMs;
+  if (value === undefined) return DVS_FADER_DELAY_DEFAULT_MS;
+  const numericValue = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim() !== ""
+      ? Number(value)
+      : Number.NaN;
+  if (!Number.isFinite(numericValue)) {
+    throw new Error("dvsFaderDelayMs must be a number.");
+  }
+  return normalizeDvsFaderDelayMs(numericValue);
+}
+
 export function parseJumbleqPreset(text: string): JumbleqConfig {
   let parsed: unknown;
   try {
@@ -68,11 +89,15 @@ export function parseJumbleqPreset(text: string): JumbleqConfig {
     magMode: enumValue(preset, "magMode", magneticModes),
     curveA: curveValue(preset, "curveA"),
     curveB: curveValue(preset, "curveB"),
+    dvsFaderDelayMs: dvsFaderDelayValue(preset),
     reverseA: optionalBooleanValue(preset, "reverseA"),
     reverseB: optionalBooleanValue(preset, "reverseB"),
   };
 }
 
 export function serializeJumbleqPreset(config: JumbleqConfig) {
-  return JSON.stringify(config, null, 2);
+  return JSON.stringify({
+    ...config,
+    dvsFaderDelayMs: normalizeDvsFaderDelayMs(config.dvsFaderDelayMs),
+  }, null, 2);
 }

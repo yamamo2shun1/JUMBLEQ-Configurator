@@ -4,15 +4,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CURVE_EDIT_OFF,
   CURVE_EDIT_ON,
+  DVS_FADER_DELAY_DEFAULT_MS,
   decodeConfigMessage,
   decodeMagneticLiveMessage,
   encodeCurveSetting,
+  encodeDvsFaderDelaySetting,
   encodeProgramSetting,
+  isConfigDumpEndMessage,
   JumbleqConfig,
   MagneticMode,
   ProgramSettingField,
   REQUEST_CURRENT_CONFIG,
   SAVE_CURRENT_CONFIG,
+  SYNC_FIELDS,
   SYNC_FIELD_COUNT,
 } from "./jumbleq-midi";
 import {
@@ -111,6 +115,7 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
   const [connectedInputName, setConnectedInputName] = useState("JUMBLEQ MIDI");
   const [hasOpenPorts, setHasOpenPorts] = useState(false);
   const [curveEditActive, setCurveEditActive] = useState(false);
+  const [dvsFaderDelaySupported, setDvsFaderDelaySupported] = useState<boolean | null>(null);
   const [magneticActivity, setMagneticActivity] = useState<MagneticActivity[]>(emptyMagneticActivity);
 
   const accessRef = useRef<WebMidiAccess | null>(null);
@@ -229,12 +234,27 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
 
     syncValuesRef.current = { ...syncValuesRef.current, [decoded.field]: decoded.value };
     syncFieldsRef.current.add(decoded.field);
+    const dumpEnded = isConfigDumpEndMessage(event.data);
+    const missingFields = SYNC_FIELDS.filter((field) => !syncFieldsRef.current.has(field));
+    const canUseLegacyFallback = dumpEnded
+      && missingFields.length === 1
+      && missingFields[0] === "dvsFaderDelayMs";
+
+    if (canUseLegacyFallback) {
+      syncValuesRef.current = {
+        ...syncValuesRef.current,
+        dvsFaderDelayMs: DVS_FADER_DELAY_DEFAULT_MS,
+      };
+      syncFieldsRef.current.add("dvsFaderDelayMs");
+    }
+
     const received = syncFieldsRef.current.size;
     setSyncReceived(received);
 
     if (received === SYNC_FIELD_COUNT) {
       clearSyncTimer();
       onConfigRef.current(syncValuesRef.current as JumbleqConfig);
+      setDvsFaderDelaySupported(!canUseLegacyFallback);
       setError(null);
       setStatus("ready");
     }
@@ -256,6 +276,7 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
     }
     syncValuesRef.current = {};
     syncFieldsRef.current = new Set();
+    setDvsFaderDelaySupported(null);
     setSyncReceived(0);
     setError(null);
     setStatus("syncing");
@@ -395,6 +416,7 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
           clearCurveEditTimer();
           curveEditActiveRef.current = false;
           setCurveEditActive(false);
+          setDvsFaderDelaySupported(null);
           setHasOpenPorts(false);
           resetMagneticActivity();
           reconnectPendingRef.current = shouldReconnectRef.current;
@@ -480,6 +502,14 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
     return sent;
   }, [beginCurveEdit, clearCurveEditTimer, endCurveEdit, sendRaw]);
 
+  const sendDvsFaderDelaySetting = useCallback((milliseconds: number) => {
+    if (!beginCurveEdit()) return false;
+    const sent = sendRaw(encodeDvsFaderDelaySetting(milliseconds), "DVS fader delay");
+    clearCurveEditTimer();
+    curveEditTimerRef.current = window.setTimeout(() => endCurveEdit(), 800);
+    return sent;
+  }, [beginCurveEdit, clearCurveEditTimer, endCurveEdit, sendRaw]);
+
   const saveCurrentConfig = useCallback(() => {
     return sendRaw(SAVE_CURRENT_CONFIG, "save to EEPROM");
   }, [sendRaw]);
@@ -495,6 +525,7 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
     inputRef.current = null;
     outputRef.current = null;
     setHasOpenPorts(false);
+    setDvsFaderDelaySupported(null);
     resetMagneticActivity();
     if (input) input.onmidimessage = null;
     await Promise.allSettled([input?.close(), output?.close()].filter(Boolean) as Promise<WebMidiPort>[]);
@@ -538,6 +569,7 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
     connectedInputName,
     hasOpenPorts,
     curveEditActive,
+    dvsFaderDelaySupported,
     magneticActivity,
     connect,
     connectSelected,
@@ -547,6 +579,7 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
     beginCurveEdit,
     endCurveEdit,
     sendCurveSetting,
+    sendDvsFaderDelaySetting,
     saveCurrentConfig,
   };
 }

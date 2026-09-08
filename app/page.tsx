@@ -24,7 +24,18 @@ import {
   X,
 } from "lucide-react";
 import { createFaderCurvePath } from "./fader-curve";
-import { curvePercentToMidiCC, JumbleqConfig, ProgramSettingField, RESTORE_DEFAULT_CONFIG, ReturnSource, Source, SYNC_FIELD_COUNT } from "./midi/jumbleq-midi";
+import {
+  curvePercentToMidiCC,
+  DVS_FADER_DELAY_MAX_MS,
+  DVS_FADER_DELAY_MIN_MS,
+  JumbleqConfig,
+  normalizeDvsFaderDelayMs,
+  ProgramSettingField,
+  RESTORE_DEFAULT_CONFIG,
+  ReturnSource,
+  Source,
+  SYNC_FIELD_COUNT,
+} from "./midi/jumbleq-midi";
 import { useJumbleqMidi, type MagneticActivity, type MidiStatus } from "./midi/use-jumbleq-midi";
 import { parseJumbleqPreset, serializeJumbleqPreset } from "./presets/jumbleq-preset";
 
@@ -303,6 +314,7 @@ export default function Home() {
   const [assignPost, setAssignPost] = useState<Source>(RESTORE_DEFAULT_CONFIG.assignPost);
   const [curveA, setCurveA] = useState(RESTORE_DEFAULT_CONFIG.curveA);
   const [curveB, setCurveB] = useState(RESTORE_DEFAULT_CONFIG.curveB);
+  const [dvsFaderDelayMs, setDvsFaderDelayMs] = useState(RESTORE_DEFAULT_CONFIG.dvsFaderDelayMs);
   const [dvs1, setDvs1] = useState(RESTORE_DEFAULT_CONFIG.dvs1);
   const [dvs2, setDvs2] = useState(RESTORE_DEFAULT_CONFIG.dvs2);
   const [returnSource, setReturnSource] = useState<ReturnSource>(RESTORE_DEFAULT_CONFIG.returnSource);
@@ -337,6 +349,7 @@ export default function Home() {
     setAssignPost(config.assignPost);
     setCurveA(config.curveA);
     setCurveB(config.curveB);
+    setDvsFaderDelayMs(config.dvsFaderDelayMs);
     setDvs1(config.dvs1);
     setDvs2(config.dvs2);
     setReturnSource(config.returnSource);
@@ -364,6 +377,7 @@ export default function Home() {
     connectedInputName,
     hasOpenPorts,
     curveEditActive,
+    dvsFaderDelaySupported,
     magneticActivity,
     connect,
     connectSelected,
@@ -373,6 +387,7 @@ export default function Home() {
     beginCurveEdit,
     endCurveEdit,
     sendCurveSetting,
+    sendDvsFaderDelaySetting,
     saveCurrentConfig,
   } = useJumbleqMidi(applySyncedConfig);
 
@@ -435,6 +450,22 @@ export default function Home() {
     setSaved(false);
   };
 
+  const updateDvsFaderDelay = (value: number) => {
+    const normalizedValue = normalizeDvsFaderDelayMs(value);
+    setDvsFaderDelayMs(normalizedValue);
+    if (hasOpenPorts && dvsFaderDelaySupported !== false) {
+      sendDvsFaderDelaySetting(normalizedValue);
+    }
+    setDirty(true);
+    setSaved(false);
+  };
+
+  const updateDvsFaderDelayFromNumberInput = (event: ChangeEvent<HTMLInputElement>) => {
+    const normalizedValue = normalizeDvsFaderDelayMs(Number(event.currentTarget.value));
+    event.currentTarget.value = String(normalizedValue);
+    updateDvsFaderDelay(normalizedValue);
+  };
+
   const save = () => {
     if (!hasOpenPorts || !saveCurrentConfig()) return;
     setDirty(false);
@@ -461,6 +492,9 @@ export default function Home() {
       sendProgramSetting("magMode", config.magMode),
       sendCurveSetting("curveA", config.curveA),
       sendCurveSetting("curveB", config.curveB),
+      dvsFaderDelaySupported === false
+        ? true
+        : sendDvsFaderDelaySetting(config.dvsFaderDelayMs),
       endCurveEdit(),
     ];
     return results.every(Boolean);
@@ -474,7 +508,7 @@ export default function Home() {
   };
 
   const exportPreset = () => {
-    const preset = { ch1Type, ch2Type, assignA, assignB, assignPost, curveA, curveB, dvs1, dvs2, returnSource, headphoneSource, magMode, sensor2, sensor3, reverseA, reverseB };
+    const preset = { ch1Type, ch2Type, assignA, assignB, assignPost, curveA, curveB, dvsFaderDelayMs, dvs1, dvs2, returnSource, headphoneSource, magMode, sensor2, sensor3, reverseA, reverseB };
     const url = URL.createObjectURL(new Blob([serializeJumbleqPreset(preset)], { type: "application/json" }));
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = "jumbleq-preset.json"; anchor.click(); URL.revokeObjectURL(url);
   };
@@ -494,6 +528,8 @@ export default function Home() {
 
       if (hasOpenPorts && !sent) {
         showPresetNotice("error", "Preset loaded, but some settings could not be sent to JUMBLEQ.");
+      } else if (hasOpenPorts && dvsFaderDelaySupported === false) {
+        showPresetNotice("success", "Preset imported and supported settings sent. DVS Fader Delay is unavailable on this firmware.");
       } else {
         showPresetNotice("success", hasOpenPorts ? "Preset imported and sent to JUMBLEQ." : "Preset imported into the preview.");
       }
@@ -555,7 +591,7 @@ export default function Home() {
               <span>{connected ? "USB MIDI · Synced" : reconnecting ? "Waiting for USB" : midiStatus === "syncing" ? `Reading ${syncReceived}/${SYNC_FIELD_COUNT}` : "Connect via USB"}</span>
             </div>
           </div>
-          <span className="version">Configurator preview · v0.9.5</span>
+          <span className="version">Configurator preview · v0.9.6</span>
         </aside>
 
         {menuOpen && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
@@ -620,6 +656,44 @@ export default function Home() {
               <div className="curve-control curve-control-b">
                 <label htmlFor="curve-b"><span><b>Fader B</b><output htmlFor="curve-b">CC {curvePercentToMidiCC(curveB)}</output></span><input id="curve-b" aria-label="Fader B curve" className="range-b" type="range" min="0" max="100" value={curveB} onFocus={() => hasOpenPorts && beginCurveEdit()} onPointerDown={() => hasOpenPorts && beginCurveEdit()} onChange={(event) => updateCurve(setCurveB, "curveB", Number(event.target.value))} onBlur={() => hasOpenPorts && endCurveEdit()} onPointerUp={() => hasOpenPorts && endCurveEdit()} onPointerCancel={() => hasOpenPorts && endCurveEdit()} /></label>
                 <div className="fader-reverse-setting"><span><b>Direction</b><small>{reverseB ? "Reverse" : "Normal"}</small></span><button className={`switch reverse-switch ${reverseB ? "on" : ""}`} type="button" role="switch" aria-label="Fader B reverse" aria-checked={reverseB} onClick={() => updateProgram(setReverseB, "reverseB", !reverseB)}><i /></button></div>
+              </div>
+            </div>
+            <div className={`dvs-fader-delay-control ${dvsFaderDelaySupported === false ? "is-unsupported" : ""}`} role="group" aria-labelledby="dvs-fader-delay-label">
+              <div className="dvs-fader-delay-copy">
+                <div><b id="dvs-fader-delay-label">DVS Fader Delay</b><output htmlFor="dvs-fader-delay dvs-fader-delay-number">{dvsFaderDelayMs} ms</output></div>
+                <p>Delays magnetic-switch channel-fader changes only while DVS is enabled. Shared by Input Ch. 1 and Input Ch. 2.</p>
+                {dvsFaderDelaySupported === false && <small>Requires JUMBLEQ firmware v0.14.3 or later. This device uses the fixed 50 ms delay.</small>}
+              </div>
+              <div className="dvs-fader-delay-inputs">
+                <input
+                  id="dvs-fader-delay"
+                  aria-label="DVS Fader Delay"
+                  type="range"
+                  min={DVS_FADER_DELAY_MIN_MS}
+                  max={DVS_FADER_DELAY_MAX_MS}
+                  step="1"
+                  value={dvsFaderDelayMs}
+                  disabled={dvsFaderDelaySupported === false}
+                  onFocus={() => hasOpenPorts && beginCurveEdit()}
+                  onPointerDown={() => hasOpenPorts && beginCurveEdit()}
+                  onChange={(event) => updateDvsFaderDelay(Number(event.target.value))}
+                  onBlur={() => hasOpenPorts && endCurveEdit()}
+                  onPointerUp={() => hasOpenPorts && endCurveEdit()}
+                  onPointerCancel={() => hasOpenPorts && endCurveEdit()}
+                />
+                <label htmlFor="dvs-fader-delay-number"><span>Delay</span><span className="number-with-unit"><input
+                  id="dvs-fader-delay-number"
+                  aria-label="DVS Fader Delay numeric value"
+                  type="number"
+                  min={DVS_FADER_DELAY_MIN_MS}
+                  max={DVS_FADER_DELAY_MAX_MS}
+                  step="1"
+                  value={dvsFaderDelayMs}
+                  disabled={dvsFaderDelaySupported === false}
+                  onFocus={() => hasOpenPorts && beginCurveEdit()}
+                  onChange={updateDvsFaderDelayFromNumberInput}
+                  onBlur={() => hasOpenPorts && endCurveEdit()}
+                /><span>ms</span></span></label>
               </div>
             </div>
           </section>

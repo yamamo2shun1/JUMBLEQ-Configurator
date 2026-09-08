@@ -19,6 +19,7 @@ const validPreset = {
   magMode: "NOTE",
   curveA: 0,
   curveB: 100,
+  dvsFaderDelayMs: 73,
   reverseA: true,
   reverseB: false,
 };
@@ -47,7 +48,7 @@ test("parser rejects malformed JSON and non-object roots", () => {
 });
 
 test("parser rejects every missing required field", () => {
-  for (const field of Object.keys(validPreset).filter((field) => field !== "reverseA" && field !== "reverseB")) {
+  for (const field of Object.keys(validPreset).filter((field) => !["reverseA", "reverseB", "dvsFaderDelayMs"].includes(field))) {
     const incomplete = { ...validPreset };
     delete incomplete[field];
     assert.throws(() => parseJumbleqPreset(JSON.stringify(incomplete)), new RegExp(field), field);
@@ -63,6 +64,36 @@ test("legacy presets default missing reverse settings to off", () => {
     reverseA: false,
     reverseB: false,
   });
+});
+
+test("legacy presets default a missing DVS fader delay to 50 ms", () => {
+  const legacyPreset = { ...validPreset };
+  delete legacyPreset.dvsFaderDelayMs;
+  assert.equal(parseJumbleqPreset(JSON.stringify(legacyPreset)).dvsFaderDelayMs, 50);
+});
+
+test("parser converts DVS fader delay to an integer and clamps it to 0-120 ms", () => {
+  const cases = [
+    [-4, 0],
+    [0, 0],
+    [49.6, 50],
+    ["72", 72],
+    [120, 120],
+    [127, 120],
+  ];
+  for (const [value, expected] of cases) {
+    assert.equal(
+      parseJumbleqPreset(JSON.stringify({ ...validPreset, dvsFaderDelayMs: value })).dvsFaderDelayMs,
+      expected,
+    );
+  }
+
+  for (const value of [null, true, "delay", ""]) {
+    assert.throws(
+      () => parseJumbleqPreset(JSON.stringify({ ...validPreset, dvsFaderDelayMs: value })),
+      /dvsFaderDelayMs/,
+    );
+  }
 });
 
 test("parser rejects unsupported enum values", () => {

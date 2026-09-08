@@ -4,10 +4,14 @@ import test from "node:test";
 import {
   CURVE_EDIT_OFF,
   CURVE_EDIT_ON,
+  DVS_FADER_DELAY_DEFAULT_MS,
+  DVS_FADER_DELAY_MAX_MS,
   decodeConfigMessage,
   decodeMagneticLiveMessage,
   encodeCurveSetting,
+  encodeDvsFaderDelaySetting,
   encodeProgramSetting,
+  isConfigDumpEndMessage,
   REQUEST_CURRENT_CONFIG,
   RESTORE_DEFAULT_CONFIG,
   SAVE_CURRENT_CONFIG,
@@ -49,10 +53,11 @@ test("restore defaults contain one value for every synchronized field", () => {
     "magMode",
     "curveA",
     "curveB",
+    "dvsFaderDelayMs",
     "reverseA",
     "reverseB",
   ]);
-  assert.equal(SYNC_FIELD_COUNT, 16);
+  assert.equal(SYNC_FIELD_COUNT, 17);
   assert.deepEqual(Object.keys(RESTORE_DEFAULT_CONFIG).sort(), [...SYNC_FIELDS].sort());
   assert.deepEqual(RESTORE_DEFAULT_CONFIG, {
     ch1Type: "LINE",
@@ -69,6 +74,7 @@ test("restore defaults contain one value for every synchronized field", () => {
     magMode: "CC",
     curveA: 50,
     curveB: 50,
+    dvsFaderDelayMs: DVS_FADER_DELAY_DEFAULT_MS,
     reverseA: false,
     reverseB: false,
   });
@@ -154,6 +160,16 @@ test("curve messages use CC20/21 on MIDI channel 15 and round-trip 0-100 percent
   }
 });
 
+test("DVS fader delay uses CC22 on MIDI channel 15 and clamps to 0-120 ms", () => {
+  assert.deepEqual(bytes(encodeDvsFaderDelaySetting(0)), [CONTROL_CHANGE_CH_15, 22, 0]);
+  assert.deepEqual(bytes(encodeDvsFaderDelaySetting(50)), [CONTROL_CHANGE_CH_15, 22, 50]);
+  assert.deepEqual(bytes(encodeDvsFaderDelaySetting(120)), [CONTROL_CHANGE_CH_15, 22, 120]);
+  assert.deepEqual(bytes(encodeDvsFaderDelaySetting(-1)), [CONTROL_CHANGE_CH_15, 22, 0]);
+  assert.deepEqual(bytes(encodeDvsFaderDelaySetting(121)), [CONTROL_CHANGE_CH_15, 22, 120]);
+  assert.deepEqual(bytes(encodeDvsFaderDelaySetting(49.6)), [CONTROL_CHANGE_CH_15, 22, 50]);
+  assert.throws(() => encodeDvsFaderDelaySetting(Number.NaN), /finite number/);
+});
+
 test("decoder converts every raw curve CC value to a normalized percentage", () => {
   for (let value = 0; value <= 127; value += 1) {
     const expected = Math.round((value * 100) / 127);
@@ -168,6 +184,23 @@ test("decoder converts every raw curve CC value to a normalized percentage", () 
   }
 });
 
+test("decoder reads Ch. 15 CC22 directly as milliseconds", () => {
+  for (let value = 0; value <= 127; value += 1) {
+    assert.deepEqual(
+      decodeConfigMessage(new Uint8Array([CONTROL_CHANGE_CH_15, 22, value])),
+      { field: "dvsFaderDelayMs", value: Math.min(DVS_FADER_DELAY_MAX_MS, value) },
+    );
+  }
+});
+
+test("configuration dump end detection accepts only Ch. 15 PC122/123", () => {
+  assert.equal(isConfigDumpEndMessage(new Uint8Array([PROGRAM_CHANGE_CH_15, 122])), true);
+  assert.equal(isConfigDumpEndMessage(new Uint8Array([PROGRAM_CHANGE_CH_15, 123])), true);
+  assert.equal(isConfigDumpEndMessage(new Uint8Array([PROGRAM_CHANGE_CH_15, 121])), false);
+  assert.equal(isConfigDumpEndMessage(new Uint8Array([0xc0, 122])), false);
+  assert.equal(isConfigDumpEndMessage(new Uint8Array([CONTROL_CHANGE_CH_15, 22, 50])), false);
+});
+
 test("decoder ignores incomplete, unrelated, and wrong-channel MIDI messages", () => {
   const ignoredMessages = [
     [],
@@ -175,8 +208,8 @@ test("decoder ignores incomplete, unrelated, and wrong-channel MIDI messages", (
     [0xc0, 0],
     [PROGRAM_CHANGE_CH_15, 35],
     [CONTROL_CHANGE_CH_15, 20],
-    [CONTROL_CHANGE_CH_15, 22, 64],
     [0xb0, 20, 64],
+    [0xb0, 22, 64],
     [0x9e, 60, 127],
   ];
 

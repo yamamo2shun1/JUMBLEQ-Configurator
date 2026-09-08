@@ -6,6 +6,7 @@ type JumbleqMidiMock = {
   disconnect: () => void;
   emit: (data: number[]) => void;
   reconnect: () => void;
+  useLegacyConfig: () => void;
 };
 
 declare global {
@@ -19,7 +20,7 @@ export async function installWebMidiMock(page: Page) {
     type MidiState = "connected" | "disconnected";
     type MidiMessageHandler = ((event: { data: Uint8Array }) => void) | null;
 
-    const configMessages = [
+    let configMessages = [
       [0xce, 0],
       [0xce, 3],
       [0xce, 7],
@@ -33,9 +34,10 @@ export async function installWebMidiMock(page: Page) {
       [0xce, 29],
       [0xce, 32],
       [0xce, 33],
-      [0xce, 123],
       [0xbe, 20, 32],
       [0xbe, 21, 95],
+      [0xbe, 22, 42],
+      [0xce, 123],
     ];
     const sentMessages: number[][] = [];
     const stateListeners = new Set<() => void>();
@@ -108,6 +110,9 @@ export async function installWebMidiMock(page: Page) {
         output.state = "connected";
         notifyStateChange();
       },
+      useLegacyConfig() {
+        configMessages = configMessages.filter((message) => !(message[0] === 0xbe && message[1] === 22));
+      },
     };
   });
 }
@@ -130,4 +135,8 @@ export async function reconnectMockDevice(page: Page) {
 
 export async function emitMockMidiMessage(page: Page, data: number[]) {
   await page.evaluate((message) => window.__jumbleqMidiMock.emit(message), data);
+}
+
+export async function useLegacyMidiConfig(page: Page) {
+  await page.evaluate(() => window.__jumbleqMidiMock.useLegacyConfig());
 }
