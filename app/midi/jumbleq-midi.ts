@@ -27,9 +27,14 @@ export type JumbleqConfig = {
   magMode: MagneticMode;
   curveA: number;
   curveB: number;
+  dvsFaderDelayMs: number;
   reverseA: boolean;
   reverseB: boolean;
 };
+
+export const DVS_FADER_DELAY_MIN_MS = 0;
+export const DVS_FADER_DELAY_MAX_MS = 120;
+export const DVS_FADER_DELAY_DEFAULT_MS = 50;
 
 export const RESTORE_DEFAULT_CONFIG: JumbleqConfig = {
   ch1Type: "LINE",
@@ -46,12 +51,13 @@ export const RESTORE_DEFAULT_CONFIG: JumbleqConfig = {
   magMode: "CC",
   curveA: 50,
   curveB: 50,
+  dvsFaderDelayMs: DVS_FADER_DELAY_DEFAULT_MS,
   reverseA: false,
   reverseB: false,
 };
 
 export type SyncField = keyof JumbleqConfig;
-export type ProgramSettingField = Exclude<SyncField, "curveA" | "curveB">;
+export type ProgramSettingField = Exclude<SyncField, "curveA" | "curveB" | "dvsFaderDelayMs">;
 
 export const SYNC_FIELDS: readonly SyncField[] = [
   "ch1Type",
@@ -68,6 +74,7 @@ export const SYNC_FIELDS: readonly SyncField[] = [
   "magMode",
   "curveA",
   "curveB",
+  "dvsFaderDelayMs",
   "reverseA",
   "reverseB",
 ];
@@ -125,6 +132,14 @@ export function curvePercentToMidiCC(percent: number) {
   return Math.round(Math.min(100, Math.max(0, percent)) * 127 / 100);
 }
 
+export function normalizeDvsFaderDelayMs(milliseconds: number) {
+  if (!Number.isFinite(milliseconds)) throw new Error("DVS fader delay must be a finite number.");
+  return Math.min(
+    DVS_FADER_DELAY_MAX_MS,
+    Math.max(DVS_FADER_DELAY_MIN_MS, Math.round(milliseconds)),
+  );
+}
+
 export function encodeProgramSetting(
   field: ProgramSettingField,
   value: JumbleqConfig[ProgramSettingField],
@@ -161,6 +176,14 @@ export function encodeCurveSetting(field: "curveA" | "curveB", percent: number) 
   ]);
 }
 
+export function encodeDvsFaderDelaySetting(milliseconds: number) {
+  return new Uint8Array([
+    CONTROL_CHANGE | MIDI_CHANNEL_15,
+    22,
+    normalizeDvsFaderDelayMs(milliseconds),
+  ]);
+}
+
 function decodeProgramChange(program: number): DecodedConfigValue | null {
   if (program <= 1) return { field: "ch1Type", value: program === 0 ? "LINE" : "PHONO" };
   if (program <= 3) return { field: "ch2Type", value: program === 2 ? "LINE" : "PHONO" };
@@ -191,12 +214,24 @@ export function decodeConfigMessage(data: Uint8Array): DecodedConfigValue | null
 
   if (messageType === CONTROL_CHANGE && data.length >= 3) {
     const controller = data[1];
-    const value = curveMidiCCToPercent(data[2]);
-    if (controller === 20) return { field: "curveA", value };
-    if (controller === 21) return { field: "curveB", value };
+    if (controller === 20) return { field: "curveA", value: curveMidiCCToPercent(data[2]) };
+    if (controller === 21) return { field: "curveB", value: curveMidiCCToPercent(data[2]) };
+    if (controller === 22) {
+      return { field: "dvsFaderDelayMs", value: normalizeDvsFaderDelayMs(data[2]) };
+    }
   }
 
   return null;
+}
+
+export function isConfigDumpEndMessage(data: Uint8Array) {
+  if (data.length < 2) return false;
+  const status = data[0];
+  const messageType = status & 0xf0;
+  const channel = status & 0x0f;
+  return channel === MIDI_CHANNEL_15
+    && messageType === PROGRAM_CHANGE
+    && (data[1] === 122 || data[1] === 123);
 }
 
 export function decodeMagneticLiveMessage(data: Uint8Array): MagneticLiveMessage | null {

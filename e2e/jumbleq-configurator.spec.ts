@@ -7,6 +7,7 @@ import {
   installWebMidiMock,
   midiMessages,
   reconnectMockDevice,
+  useLegacyMidiConfig,
 } from "./web-midi-mock";
 
 const importedPreset = {
@@ -24,6 +25,7 @@ const importedPreset = {
   magMode: "NOTE",
   curveA: 35,
   curveB: 65,
+  dvsFaderDelayMs: 73,
   reverseA: true,
   reverseB: false,
 };
@@ -47,7 +49,7 @@ test("shows the verified iPad MIDIWeb Browser guidance", async ({ page }) => {
 test("groups audio routing and MIDI controls by function", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Configurator sections" });
   await expect(navigation.getByRole("link")).toHaveText(["Audio", "MIDI", "Device"]);
-  await expect(page.getByText("Configurator preview · v0.9.5")).toBeVisible();
+  await expect(page.getByText("Configurator preview · v0.9.6")).toBeVisible();
 
   const audioSettings = page.locator("#audio");
   await expect(page.getByRole("heading", { name: "Audio settings" })).toBeVisible();
@@ -170,7 +172,7 @@ test("connects to JUMBLEQ and reflects the complete initial sync", async ({ page
 
   await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
   await expect(page.getByText("Current settings loaded from JUMBLEQ")).toBeVisible();
-  await expect(page.getByText("16/16 synced")).toBeVisible();
+  await expect(page.getByText("17/17 synced")).toBeVisible();
   await expect(page.getByRole("group", { name: "Channel 2 input type" }).getByRole("button", { name: "PHONO" })).toHaveClass(/active/);
   await expect(page.getByRole("article", { name: "Channel 1 input" }).getByRole("switch", { name: "Channel 1 DVS" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("combobox", { name: "Fader A", exact: true })).toHaveValue("USB 3/4");
@@ -179,10 +181,13 @@ test("connects to JUMBLEQ and reflects the complete initial sync", async ({ page
   await expect(page.getByRole("button", { name: "MIDI note" })).toHaveClass(/active/);
   await expect(page.getByLabel("Fader A curve", { exact: true })).toHaveValue("25");
   await expect(page.getByLabel("Fader B curve", { exact: true })).toHaveValue("75");
+  await expect(page.getByRole("slider", { name: "DVS Fader Delay" })).toHaveValue("42");
   await expect(page.getByRole("switch", { name: "Fader A reverse" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("switch", { name: "Fader B reverse" })).toHaveAttribute("aria-checked", "false");
   await expect(page.locator(".curve-control-a .fader-reverse-setting")).toContainText("Reverse");
   await expect(page.locator(".curve-control-b .fader-reverse-setting")).toContainText("Normal");
+  await emitMockMidiMessage(page, [0xb0, 22, 120]);
+  await expect(page.getByRole("slider", { name: "DVS Fader Delay" })).toHaveValue("42");
   expect(await midiMessages(page)).toContainEqual([0xce, 126]);
 });
 
@@ -198,23 +203,41 @@ test("sends setting, curve edit, and EEPROM save messages", async ({ page }) => 
   const curveA = page.getByLabel("Fader A curve", { exact: true });
   await curveA.fill("80");
   await curveA.blur();
+  const dvsFaderDelay = page.getByRole("slider", { name: "DVS Fader Delay" });
+  await dvsFaderDelay.fill("120");
+  await dvsFaderDelay.blur();
   await page.getByRole("switch", { name: "Fader A reverse" }).click();
   await page.getByRole("switch", { name: "Fader B reverse" }).click();
   await page.getByRole("button", { name: "Save to device" }).click();
 
   await expect(page.getByText("Save command sent to JUMBLEQ")).toBeVisible();
-  expect(await midiMessages(page)).toEqual(expect.arrayContaining([
+  const sentMessages = await midiMessages(page);
+  expect(sentMessages).toEqual(expect.arrayContaining([
     [0xce, 1],
     [0xce, 7],
     [0xce, 16],
     [0xce, 22],
     [0xce, 121],
     [0xbe, 20, 102],
+    [0xbe, 22, 120],
     [0xce, 120],
     [0xce, 31],
     [0xce, 34],
     [0xce, 127],
   ]));
+  const delayMessageIndex = sentMessages.findIndex((message) => (
+    message[0] === 0xbe && message[1] === 22 && message[2] === 120
+  ));
+  expect(sentMessages[delayMessageIndex - 1]).toEqual([0xce, 121]);
+  expect(sentMessages[delayMessageIndex + 1]).toEqual([0xce, 120]);
+});
+
+test("normalizes leading zeroes in the DVS fader delay number input", async ({ page }) => {
+  const delayInput = page.getByRole("spinbutton", { name: "DVS Fader Delay numeric value" });
+  await delayInput.fill("0015");
+
+  await expect(delayInput).toHaveValue("15");
+  await expect(page.getByRole("slider", { name: "DVS Fader Delay" })).toHaveValue("15");
 });
 
 test("visualizes magnetic CC values and Note velocities on their hardware keys", async ({ page }) => {
@@ -278,7 +301,7 @@ test("automatically reconnects and synchronizes after a USB interruption", async
   await reconnectMockDevice(page);
 
   await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
-  await expect(page.getByText("16/16 synced")).toBeVisible();
+  await expect(page.getByText("17/17 synced")).toBeVisible();
   expect(await midiMessages(page)).toContainEqual([0xce, 126]);
 });
 
@@ -296,6 +319,7 @@ test("imports a validated preset and exports the same settings", async ({ page }
   await expect(page.getByLabel("Headphone monitor source")).toHaveValue("Thru");
   await expect(page.getByLabel("Fader A curve", { exact: true })).toHaveValue("35");
   await expect(page.getByLabel("Fader B curve", { exact: true })).toHaveValue("65");
+  await expect(page.getByRole("slider", { name: "DVS Fader Delay" })).toHaveValue("73");
   await expect(page.getByRole("switch", { name: "Fader A reverse" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("switch", { name: "Fader B reverse" })).toHaveAttribute("aria-checked", "false");
 
@@ -306,4 +330,15 @@ test("imports a validated preset and exports the same settings", async ({ page }
   const path = await download.path();
   expect(path).not.toBeNull();
   expect(JSON.parse(await readFile(path!, "utf8"))).toEqual(importedPreset);
+});
+
+test("falls back to a fixed 50 ms delay for older firmware", async ({ page }) => {
+  await useLegacyMidiConfig(page);
+  await page.getByRole("button", { name: "Connect device" }).click();
+
+  await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
+  await expect(page.getByText("17/17 synced")).toBeVisible();
+  await expect(page.getByRole("slider", { name: "DVS Fader Delay" })).toHaveValue("50");
+  await expect(page.getByRole("slider", { name: "DVS Fader Delay" })).toBeDisabled();
+  await expect(page.getByText(/Requires JUMBLEQ firmware v0\.14\.3/)).toBeVisible();
 });
