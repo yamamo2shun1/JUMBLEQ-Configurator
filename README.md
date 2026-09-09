@@ -33,6 +33,7 @@ npm run test:e2e
 - Connection to JUMBLEQ and initial synchronization
 - Setting changes, curve editing, and the EEPROM save command
 - Automatic reconnection after USB disconnection
+- Safe UF2 bootloader arming, cancellation, timeout, and reconnection
 - Preset import and export
 
 Install the browser used for E2E testing before running the tests for the first time:

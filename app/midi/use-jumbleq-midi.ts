@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ARM_UF2_BOOTLOADER,
+  CANCEL_UF2_BOOTLOADER,
   CURVE_EDIT_OFF,
   CURVE_EDIT_ON,
   DVS_FADER_DELAY_DEFAULT_MS,
@@ -67,6 +69,12 @@ export type MidiStatus =
   | "ready"
   | "error";
 
+export type Uf2TransitionState =
+  | "idle"
+  | "awaiting-switch"
+  | "midi-disconnected"
+  | "expired";
+
 export type MidiPortOption = {
   id: string;
   name: string;
@@ -76,6 +84,7 @@ export type MidiPortOption = {
 const SYNC_TIMEOUT_MS = 2500;
 const MAGNETIC_ACTIVITY_HOLD_MS = 900;
 const MAGNETIC_CONTROL_COUNT = 4;
+const UF2_ARM_WINDOW_MS = 10_000;
 
 export type MagneticActivity = {
   mode: MagneticMode | null;
@@ -115,6 +124,8 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
   const [connectedInputName, setConnectedInputName] = useState("JUMBLEQ MIDI");
   const [hasOpenPorts, setHasOpenPorts] = useState(false);
   const [curveEditActive, setCurveEditActive] = useState(false);
+  const [uf2TransitionState, setUf2TransitionState] = useState<Uf2TransitionState>("idle");
+  const [uf2ArmDeadline, setUf2ArmDeadline] = useState<number | null>(null);
   const [dvsFaderDelaySupported, setDvsFaderDelaySupported] = useState<boolean | null>(null);
   const [magneticActivity, setMagneticActivity] = useState<MagneticActivity[]>(emptyMagneticActivity);
 
@@ -126,6 +137,8 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
   const syncTimerRef = useRef<number | null>(null);
   const curveEditTimerRef = useRef<number | null>(null);
   const curveEditActiveRef = useRef(false);
+  const uf2ArmTimerRef = useRef<number | null>(null);
+  const uf2TransitionStateRef = useRef<Uf2TransitionState>("idle");
   const stateChangeHandlerRef = useRef<(() => void) | null>(null);
   const reconnectTargetRef = useRef<{ input: MidiPortIdentity; output: MidiPortIdentity } | null>(null);
   const reconnectPendingRef = useRef(false);
@@ -148,6 +161,22 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
   const clearCurveEditTimer = useCallback(() => {
     if (curveEditTimerRef.current) window.clearTimeout(curveEditTimerRef.current);
     curveEditTimerRef.current = null;
+  }, []);
+
+  const clearUf2ArmTimer = useCallback(() => {
+    if (uf2ArmTimerRef.current !== null) window.clearTimeout(uf2ArmTimerRef.current);
+    uf2ArmTimerRef.current = null;
+  }, []);
+
+  const updateUf2TransitionState = useCallback((nextState: Uf2TransitionState) => {
+    uf2TransitionStateRef.current = nextState;
+    setUf2TransitionState(nextState);
+  }, []);
+
+  const sendUf2CancelBestEffort = useCallback(() => {
+    const output = outputRef.current;
+    if (!output || output.state === "disconnected") return;
+    try { output.send(CANCEL_UF2_BOOTLOADER); } catch { /* Best-effort cancellation. */ }
   }, []);
 
   const publishMagneticActivity = useCallback(() => {
@@ -257,8 +286,11 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
       setDvsFaderDelaySupported(!canUseLegacyFallback);
       setError(null);
       setStatus("ready");
+      if (uf2TransitionStateRef.current === "midi-disconnected") {
+        updateUf2TransitionState("idle");
+      }
     }
-  }, [clearSyncTimer, handleMagneticLiveMessage]);
+  }, [clearSyncTimer, handleMagneticLiveMessage, updateUf2TransitionState]);
 
   const beginSync = useCallback(() => {
     if (!outputRef.current) {
@@ -409,7 +441,13 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
         const activeInput = inputRef.current;
         const activeOutput = outputRef.current;
         if ((activeInput && activeInput.state === "disconnected") || (activeOutput && activeOutput.state === "disconnected")) {
+          const expectedUf2Disconnect = uf2TransitionStateRef.current === "awaiting-switch";
           clearSyncTimer();
+          if (expectedUf2Disconnect) {
+            clearUf2ArmTimer();
+            setUf2ArmDeadline(null);
+            updateUf2TransitionState("midi-disconnected");
+          }
           if (activeInput) activeInput.onmidimessage = null;
           inputRef.current = null;
           outputRef.current = null;
@@ -449,7 +487,7 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
       setError(message);
       setStatus("error");
     }
-  }, [clearCurveEditTimer, clearSyncTimer, openPorts, refreshPorts, resetMagneticActivity, tryAutoReconnect]);
+  }, [clearCurveEditTimer, clearSyncTimer, clearUf2ArmTimer, openPorts, refreshPorts, resetMagneticActivity, tryAutoReconnect, updateUf2TransitionState]);
 
   const connectSelected = useCallback(async () => {
     try {
@@ -494,6 +532,49 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
     return sent;
   }, [clearCurveEditTimer, sendRaw]);
 
+  const armUf2Bootloader = useCallback(() => {
+    const output = outputRef.current;
+    if (status !== "ready" || !output || output.state === "disconnected") {
+      setError("JUMBLEQ must be connected and synchronized before entering UF2 mode.");
+      return false;
+    }
+    if (uf2TransitionStateRef.current === "awaiting-switch") return false;
+
+    clearCurveEditTimer();
+    if (curveEditActiveRef.current) {
+      if (!sendRaw(CURVE_EDIT_OFF, "curve edit off")) return false;
+      curveEditActiveRef.current = false;
+      setCurveEditActive(false);
+    }
+    if (!sendRaw(ARM_UF2_BOOTLOADER, "UF2 confirmation request")) return false;
+
+    const deadline = Date.now() + UF2_ARM_WINDOW_MS;
+    clearUf2ArmTimer();
+    setUf2ArmDeadline(deadline);
+    updateUf2TransitionState("awaiting-switch");
+    uf2ArmTimerRef.current = window.setTimeout(() => {
+      if (uf2TransitionStateRef.current !== "awaiting-switch") return;
+      sendUf2CancelBestEffort();
+      uf2ArmTimerRef.current = null;
+      setUf2ArmDeadline(null);
+      updateUf2TransitionState("expired");
+    }, UF2_ARM_WINDOW_MS);
+    return true;
+  }, [clearCurveEditTimer, clearUf2ArmTimer, sendRaw, sendUf2CancelBestEffort, status, updateUf2TransitionState]);
+
+  const cancelUf2Bootloader = useCallback(() => {
+    if (uf2TransitionStateRef.current === "awaiting-switch") sendUf2CancelBestEffort();
+    clearUf2ArmTimer();
+    setUf2ArmDeadline(null);
+    updateUf2TransitionState("idle");
+  }, [clearUf2ArmTimer, sendUf2CancelBestEffort, updateUf2TransitionState]);
+
+  const clearUf2Transition = useCallback(() => {
+    clearUf2ArmTimer();
+    setUf2ArmDeadline(null);
+    updateUf2TransitionState("idle");
+  }, [clearUf2ArmTimer, updateUf2TransitionState]);
+
   const sendCurveSetting = useCallback((field: "curveA" | "curveB", percent: number) => {
     if (!beginCurveEdit()) return false;
     const sent = sendRaw(encodeCurveSetting(field, percent), field);
@@ -515,6 +596,7 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
   }, [sendRaw]);
 
   const disconnect = useCallback(async () => {
+    cancelUf2Bootloader();
     shouldReconnectRef.current = false;
     reconnectPendingRef.current = false;
     reconnectTargetRef.current = null;
@@ -532,7 +614,7 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
     setSyncReceived(0);
     setError(null);
     setStatus("idle");
-  }, [clearSyncTimer, endCurveEdit, resetMagneticActivity]);
+  }, [cancelUf2Bootloader, clearSyncTimer, endCurveEdit, resetMagneticActivity]);
 
   useEffect(() => {
     const magneticHoldTimers = magneticHoldTimersRef.current;
@@ -541,6 +623,7 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
       reconnectPendingRef.current = false;
       clearSyncTimer();
       clearCurveEditTimer();
+      clearUf2ArmTimer();
       for (const timer of magneticHoldTimers) {
         if (timer !== null) window.clearTimeout(timer);
       }
@@ -548,12 +631,15 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
       if (curveEditActiveRef.current && outputRef.current?.state !== "disconnected") {
         try { outputRef.current?.send(CURVE_EDIT_OFF); } catch { /* Best-effort cleanup. */ }
       }
+      if (uf2TransitionStateRef.current === "awaiting-switch" && outputRef.current?.state !== "disconnected") {
+        try { outputRef.current?.send(CANCEL_UF2_BOOTLOADER); } catch { /* Best-effort cleanup. */ }
+      }
       if (inputRef.current) inputRef.current.onmidimessage = null;
       if (accessRef.current && stateChangeHandlerRef.current) {
         accessRef.current.removeEventListener("statechange", stateChangeHandlerRef.current);
       }
     };
-  }, [clearCurveEditTimer, clearSyncTimer]);
+  }, [clearCurveEditTimer, clearSyncTimer, clearUf2ArmTimer]);
 
   return {
     status,
@@ -569,6 +655,8 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
     connectedInputName,
     hasOpenPorts,
     curveEditActive,
+    uf2TransitionState,
+    uf2ArmDeadline,
     dvsFaderDelaySupported,
     magneticActivity,
     connect,
@@ -578,6 +666,9 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
     sendProgramSetting,
     beginCurveEdit,
     endCurveEdit,
+    armUf2Bootloader,
+    cancelUf2Bootloader,
+    clearUf2Transition,
     sendCurveSetting,
     sendDvsFaderDelaySetting,
     saveCurrentConfig,

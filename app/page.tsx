@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, CSSProperties } from "react";
+import type { ChangeEvent, CSSProperties, ReactNode, RefObject } from "react";
 import Image from "next/image";
 import {
   BookOpen,
@@ -13,6 +13,7 @@ import {
   GitBranch,
   Headphones,
   Menu,
+  Power,
   Radio,
   RefreshCw,
   RotateCcw,
@@ -36,7 +37,12 @@ import {
   Source,
   SYNC_FIELD_COUNT,
 } from "./midi/jumbleq-midi";
-import { useJumbleqMidi, type MagneticActivity, type MidiStatus } from "./midi/use-jumbleq-midi";
+import {
+  useJumbleqMidi,
+  type MagneticActivity,
+  type MidiStatus,
+  type Uf2TransitionState,
+} from "./midi/use-jumbleq-midi";
 import { parseJumbleqPreset, serializeJumbleqPreset } from "./presets/jumbleq-preset";
 
 const sources: Source[] = ["CH 1", "CH 2", "USB 1/2", "USB 3/4"];
@@ -150,6 +156,87 @@ function CurveGraph({ curveA, curveB, reverseA, reverseB }: { curveA: number; cu
   );
 }
 
+function AccessibleDialog({
+  labelledBy,
+  dialogClassName,
+  closeLabel,
+  onClose,
+  initialFocusRef,
+  returnFocusRef,
+  children,
+}: {
+  labelledBy: string;
+  dialogClassName: string;
+  closeLabel: string;
+  onClose: () => void;
+  initialFocusRef?: RefObject<HTMLElement | null>;
+  returnFocusRef?: RefObject<HTMLElement | null>;
+  children: ReactNode;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusToRestore = returnFocusRef?.current ?? previousFocus;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusTimer = window.setTimeout(() => {
+      const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      (initialFocusRef?.current ?? firstFocusable)?.focus();
+    }, 0);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? []);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!dialogRef.current?.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      focusToRestore?.focus();
+    };
+  }, [initialFocusRef, returnFocusRef]);
+
+  return (
+    <div className="dialog-layer">
+      <button className="dialog-scrim" aria-label={closeLabel} onClick={onClose} />
+      <div ref={dialogRef} className={dialogClassName} role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function HelpDialog({
   open,
   onClose,
@@ -167,47 +254,7 @@ function HelpDialog({
   hasOpenPorts: boolean;
   syncReceived: number;
 }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab") return;
-
-      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? []);
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.clearTimeout(focusTimer);
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previousFocus?.focus();
-    };
-  }, [onClose, open]);
 
   if (!open) return null;
 
@@ -230,9 +277,13 @@ function HelpDialog({
           : "Not connected";
 
   return (
-    <div className="help-layer">
-      <button className="help-scrim" aria-label="Close help" onClick={onClose} />
-      <div ref={dialogRef} className="help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
+    <AccessibleDialog
+      labelledBy="help-title"
+      dialogClassName="help-dialog"
+      closeLabel="Close help"
+      onClose={onClose}
+      initialFocusRef={closeButtonRef}
+    >
         <header className="help-dialog-header">
           <div><span className="help-heading-icon"><CircleHelp size={20} /></span><div><p>JUMBLEQ CONFIGURATOR</p><h2 id="help-title">Help &amp; connection guide</h2></div></div>
           <button ref={closeButtonRef} className="help-close" aria-label="Close help" onClick={onClose}><X size={20} /></button>
@@ -271,6 +322,17 @@ function HelpDialog({
                 <li>An imported preset is not stored in EEPROM until Save to device is selected.</li>
               </ul>
             </section>
+
+            <section className="help-section compact firmware-update-help">
+              <div className="help-section-heading"><span><Power size={18} /></span><div><h3>Firmware update</h3><p>Enter UF2 mode with a physical confirmation on JUMBLEQ.</p></div></div>
+              <ul>
+                <li>The Configurator only starts a temporary 10-second confirmation window; it does not restart JUMBLEQ by itself.</li>
+                <li>Release SW3 once, then hold it on the physical unit for 2 seconds.</li>
+                <li>Audio and USB MIDI disconnect during the update, and unsaved settings are not stored automatically.</li>
+                <li>The manual SW3 + RESET procedure remains available.</li>
+              </ul>
+              <a className="help-firmware-link" href="https://github.com/yamamo2shun1/JUMBLEQ/blob/main/Docs/user-guide/firmware-update.md" target="_blank" rel="noreferrer">Firmware update guide <ExternalLink size={12} /></a>
+            </section>
           </div>
 
           <section className="help-section">
@@ -293,14 +355,133 @@ function HelpDialog({
         </div>
 
         <footer className="help-dialog-footer"><button onClick={onClose}>Close help</button></footer>
+    </AccessibleDialog>
+  );
+}
+
+function Uf2Dialog({
+  open,
+  state,
+  deadline,
+  dirty,
+  canArm,
+  onArm,
+  onClose,
+  returnFocusRef,
+}: {
+  open: boolean;
+  state: Uf2TransitionState;
+  deadline: number | null;
+  dirty: boolean;
+  canArm: boolean;
+  onArm: () => void;
+  onClose: () => void;
+  returnFocusRef: RefObject<HTMLButtonElement | null>;
+}) {
+  const safeActionRef = useRef<HTMLButtonElement>(null);
+  const [secondsRemaining, setSecondsRemaining] = useState(10);
+
+  useEffect(() => {
+    if (!open || state !== "awaiting-switch" || deadline === null) return;
+    const updateCountdown = () => {
+      setSecondsRemaining(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    };
+    updateCountdown();
+    const interval = window.setInterval(updateCountdown, 250);
+    return () => window.clearInterval(interval);
+  }, [deadline, open, state]);
+
+  useEffect(() => {
+    if (!open) return;
+    const focusTimer = window.setTimeout(() => safeActionRef.current?.focus(), 0);
+    return () => window.clearTimeout(focusTimer);
+  }, [open, state]);
+
+  if (!open) return null;
+
+  const title = state === "idle"
+    ? "Enter UF2 bootloader mode?"
+    : state === "awaiting-switch"
+      ? "Request sent"
+      : state === "expired"
+        ? "Request expired"
+        : "JUMBLEQ MIDI disconnected";
+
+  return (
+    <AccessibleDialog
+      labelledBy="uf2-dialog-title"
+      dialogClassName="uf2-dialog"
+      closeLabel="Close UF2 dialog"
+      onClose={onClose}
+      initialFocusRef={safeActionRef}
+      returnFocusRef={returnFocusRef}
+    >
+      <header className="uf2-dialog-header">
+        <span className="uf2-heading-icon"><TriangleAlert size={22} /></span>
+        <div><p>DEVICE MAINTENANCE</p><h2 id="uf2-dialog-title">{title}</h2></div>
+        <button className="help-close" aria-label="Close UF2 dialog" onClick={onClose}><X size={20} /></button>
+      </header>
+
+      <div className="uf2-dialog-body">
+        {state === "idle" && (
+          <>
+            <p>Audio and USB MIDI will stop when JUMBLEQ restarts. The Configurator does not save settings automatically before entering the bootloader.</p>
+            <div className="uf2-switch-instruction"><strong>Physical confirmation required</strong><p>After arming, release SW3 once, then hold it for 2 seconds on JUMBLEQ. Keep holding it until the JUMBLEQ UF2 drive appears.</p><span>The request expires after 10 seconds.</span></div>
+            {dirty && <div className="uf2-unsaved-warning" role="alert"><TriangleAlert size={18} /><p><strong>There are unsaved changes.</strong> They may be lost when JUMBLEQ restarts. Use Save to device first if you want to keep them.</p></div>}
+          </>
+        )}
+
+        {state === "awaiting-switch" && (
+          <>
+            <div className="uf2-countdown" aria-hidden="true"><strong>{secondsRemaining}</strong><span>seconds remaining</span></div>
+            <div className="uf2-switch-instruction"><strong>Use SW3 on JUMBLEQ now</strong><p>Release SW3 once, then hold it for 2 seconds. Keep holding it until the JUMBLEQ UF2 drive appears.</p></div>
+            <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">Request expires in {secondsRemaining} seconds.</p>
+          </>
+        )}
+
+        {state === "expired" && (
+          <>
+            <p>The request expired. JUMBLEQ did not enter UF2 mode.</p>
+            <p>Try again, or use the manual SW3 + RESET procedure.</p>
+          </>
+        )}
+
+        {state === "midi-disconnected" && (
+          <>
+            <p>Check that the JUMBLEQ UF2 drive appears, then copy the .uf2 firmware file to it. The Configurator will reconnect after JUMBLEQ restarts.</p>
+            <p className="uf2-observation-note">Only the MIDI disconnection was detected. Confirm the UF2 drive in your operating system before continuing.</p>
+          </>
+        )}
+
+        {(state === "expired" || state === "midi-disconnected") && (
+          <a className="uf2-guide-link" href="https://github.com/yamamo2shun1/JUMBLEQ/blob/main/Docs/user-guide/firmware-update.md" target="_blank" rel="noreferrer">Open firmware update guide <ExternalLink size={13} /></a>
+        )}
       </div>
-    </div>
+
+      <footer className="uf2-dialog-footer">
+        {state === "idle" && (
+          <>
+            <button ref={safeActionRef} className="uf2-secondary-action" onClick={onClose}>Cancel</button>
+            <button className="uf2-warning-action" onClick={onArm} disabled={!canArm}><TriangleAlert size={15} />Arm UF2 mode</button>
+          </>
+        )}
+        {state === "awaiting-switch" && <button ref={safeActionRef} className="uf2-secondary-action" onClick={onClose}>Cancel request</button>}
+        {state === "expired" && (
+          <>
+            <button ref={safeActionRef} className="uf2-secondary-action" onClick={onClose}>Close</button>
+            <button className="uf2-warning-action" onClick={onArm} disabled={!canArm}>Try again</button>
+          </>
+        )}
+        {state === "midi-disconnected" && <button ref={safeActionRef} className="uf2-secondary-action" onClick={onClose}>Return to connection controls</button>}
+      </footer>
+    </AccessibleDialog>
   );
 }
 
 export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [uf2DialogOpen, setUf2DialogOpen] = useState(false);
   const browserSupport = helpOpen && typeof window !== "undefined"
     ? {
         midi: typeof (navigator as Navigator & { requestMIDIAccess?: unknown }).requestMIDIAccess === "function",
@@ -329,6 +510,8 @@ export default function Home() {
   const [presetNotice, setPresetNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const presetFileInputRef = useRef<HTMLInputElement>(null);
   const presetNoticeTimerRef = useRef<number | null>(null);
+  const uf2EntryButtonRef = useRef<HTMLButtonElement>(null);
+  const uf2RequestStartedRef = useRef(false);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
 
   const showPresetNotice = useCallback((type: "success" | "error", message: string) => {
@@ -377,6 +560,8 @@ export default function Home() {
     connectedInputName,
     hasOpenPorts,
     curveEditActive,
+    uf2TransitionState,
+    uf2ArmDeadline,
     dvsFaderDelaySupported,
     magneticActivity,
     connect,
@@ -386,6 +571,9 @@ export default function Home() {
     sendProgramSetting,
     beginCurveEdit,
     endCurveEdit,
+    armUf2Bootloader,
+    cancelUf2Bootloader,
+    clearUf2Transition,
     sendCurveSetting,
     sendDvsFaderDelaySetting,
     saveCurrentConfig,
@@ -395,6 +583,7 @@ export default function Home() {
   const reconnecting = midiStatus === "reconnecting";
   const connectionBusy = midiStatus === "requesting" || midiStatus === "connecting" || reconnecting;
   const settingsLocked = connectionBusy || midiStatus === "syncing";
+  const canArmUf2 = connected && hasOpenPorts;
   const disabledFaderSources = sources.filter((source) => (
     (source === "CH 1" && dvs1) || (source === "CH 2" && dvs2)
   ));
@@ -413,6 +602,33 @@ export default function Home() {
               : hasOpenPorts
                 ? "Disconnect device"
                 : "Connect device";
+
+  const closeUf2Dialog = useCallback(() => {
+    if (uf2TransitionState === "awaiting-switch") cancelUf2Bootloader();
+    else if (uf2TransitionState !== "idle") clearUf2Transition();
+    uf2RequestStartedRef.current = false;
+    setUf2DialogOpen(false);
+  }, [cancelUf2Bootloader, clearUf2Transition, uf2TransitionState]);
+
+  const openUf2Dialog = useCallback(() => {
+    setHelpOpen(false);
+    setUf2DialogOpen(true);
+  }, []);
+
+  const openHelp = useCallback(() => {
+    closeUf2Dialog();
+    setHelpOpen(true);
+  }, [closeUf2Dialog]);
+
+  const armUf2 = useCallback(() => {
+    if (armUf2Bootloader()) uf2RequestStartedRef.current = true;
+  }, [armUf2Bootloader]);
+
+  useEffect(() => {
+    if (uf2TransitionState !== "idle" || !uf2RequestStartedRef.current) return;
+    uf2RequestStartedRef.current = false;
+    setUf2DialogOpen(false);
+  }, [uf2TransitionState]);
 
   const updateProgram = <Key extends ProgramSettingField>(
     setter: (value: JumbleqConfig[Key]) => void,
@@ -561,7 +777,7 @@ export default function Home() {
           <span className="brand-product">CONFIGURATOR</span>
         </a>
         <div className="topbar-actions">
-          <button className="help-button" aria-label="Open help" aria-haspopup="dialog" aria-expanded={helpOpen} onClick={() => setHelpOpen(true)}><CircleHelp size={18} /><span>Help</span></button>
+          <button className="help-button" aria-label="Open help" aria-haspopup="dialog" aria-expanded={helpOpen} onClick={openHelp}><CircleHelp size={18} /><span>Help</span></button>
           <button
             className={`connect-button ${connected ? "is-connected" : ""}`}
             onClick={() => hasOpenPorts ? void disconnect() : void connect()}
@@ -591,7 +807,7 @@ export default function Home() {
               <span>{connected ? "USB MIDI · Synced" : reconnecting ? "Waiting for USB" : midiStatus === "syncing" ? `Reading ${syncReceived}/${SYNC_FIELD_COUNT}` : "Connect via USB"}</span>
             </div>
           </div>
-          <span className="version">Configurator preview · v0.9.6</span>
+          <span className="version">Configurator preview · v0.9.7</span>
         </aside>
 
         {menuOpen && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
@@ -736,7 +952,7 @@ export default function Home() {
 
           <section className="section-block device-section" id="device">
             <div className="section-heading"><div><p className="card-label">SYSTEM</p><h2>Device</h2></div><p>Connection details and preset management.</p></div>
-            <article className="device-card">
+            <article className={`device-card ${accessGranted ? "has-port-panel" : ""}`}>
               <div className="device-summary">
                 <div className="device-identity">
                   <span className={`device-art ${connected ? "online" : reconnecting ? "reconnecting" : ""}`}><Usb size={25} /></span>
@@ -793,6 +1009,18 @@ export default function Home() {
                 <button onClick={() => presetFileInputRef.current?.click()} disabled={settingsLocked}><Upload size={16} />Import preset</button>
                 <input ref={presetFileInputRef} id="preset-file" type="file" accept=".json,application/json" aria-label="Import preset file" onChange={(event) => void importPreset(event)} hidden />
               </div>
+
+              <div className="device-maintenance-actions">
+                <button
+                  ref={uf2EntryButtonRef}
+                  className="uf2-entry-action"
+                  onClick={openUf2Dialog}
+                  disabled={!canArmUf2}
+                  aria-haspopup="dialog"
+                  aria-expanded={uf2DialogOpen}
+                  title={!canArmUf2 ? "Connect and synchronize JUMBLEQ before entering UF2 mode." : undefined}
+                ><Power size={16} />Enter UF2 mode</button>
+              </div>
             </article>
           </section>
         </section>
@@ -805,6 +1033,16 @@ export default function Home() {
       {saved && <div className="toast"><span>✓</span> Save command sent to JUMBLEQ</div>}
       {presetNotice && <div className={`toast preset-toast ${presetNotice.type === "error" ? "is-error" : ""}`} role={presetNotice.type === "error" ? "alert" : "status"}><span>{presetNotice.type === "error" ? "!" : "✓"}</span>{presetNotice.message}</div>}
       <HelpDialog open={helpOpen} onClose={closeHelp} browserSupport={browserSupport} midiStatus={midiStatus} connected={connected} hasOpenPorts={hasOpenPorts} syncReceived={syncReceived} />
+      <Uf2Dialog
+        open={uf2DialogOpen}
+        state={uf2TransitionState}
+        deadline={uf2ArmDeadline}
+        dirty={dirty}
+        canArm={canArmUf2}
+        onArm={armUf2}
+        onClose={closeUf2Dialog}
+        returnFocusRef={uf2EntryButtonRef}
+      />
     </main>
   );
 }

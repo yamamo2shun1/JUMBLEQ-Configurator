@@ -117,6 +117,8 @@ function booleanIndex(field: ProgramSettingField, value: unknown) {
 
 export const CURVE_EDIT_OFF = programChange(120);
 export const CURVE_EDIT_ON = programChange(121);
+export const ARM_UF2_BOOTLOADER = programChange(124);
+export const CANCEL_UF2_BOOTLOADER = programChange(125);
 export const SAVE_CURRENT_CONFIG = programChange(127);
 
 export type DecodedConfigValue = {

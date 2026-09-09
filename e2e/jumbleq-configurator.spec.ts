@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import {
   clearMidiMessages,
   disconnectMockDevice,
+  disconnectMockDeviceOnUf2Arm,
   emitMockMidiMessage,
   installWebMidiMock,
   midiMessages,
@@ -44,12 +45,17 @@ test("shows the verified iPad MIDIWeb Browser guidance", async ({ page }) => {
     "https://apps.apple.com/jp/app/midiweb-browser/id6757226617?l=en-US",
   );
   await expect(page.getByText("Connection and MIDI communication are verified on iPadOS 26.5.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Firmware update" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Firmware update guide" })).toHaveAttribute(
+    "href",
+    "https://github.com/yamamo2shun1/JUMBLEQ/blob/main/Docs/user-guide/firmware-update.md",
+  );
 });
 
 test("groups audio routing and MIDI controls by function", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Configurator sections" });
   await expect(navigation.getByRole("link")).toHaveText(["Audio", "MIDI", "Device"]);
-  await expect(page.getByText("Configurator preview · v0.9.6")).toBeVisible();
+  await expect(page.getByText("Configurator preview · v0.9.7")).toBeVisible();
 
   const audioSettings = page.locator("#audio");
   await expect(page.getByRole("heading", { name: "Audio settings" })).toBeVisible();
@@ -303,6 +309,119 @@ test("automatically reconnects and synchronizes after a USB interruption", async
   await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
   await expect(page.getByText("17/17 synced")).toBeVisible();
   expect(await midiMessages(page)).toContainEqual([0xce, 126]);
+});
+
+test("requires confirmation before sending one UF2 arm request and discloses unsaved settings", async ({ page }) => {
+  const enterUf2Button = page.getByRole("button", { name: "Enter UF2 mode" });
+  await expect(enterUf2Button).toBeDisabled();
+
+  await page.getByRole("button", { name: "Connect device" }).click();
+  await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
+  await page.getByRole("group", { name: "Channel 1 input type" }).getByRole("button", { name: "PHONO" }).click();
+  await clearMidiMessages(page);
+
+  await enterUf2Button.click();
+  const dialog = page.getByRole("dialog", { name: "Enter UF2 bootloader mode?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Physical confirmation required")).toBeVisible();
+  await expect(dialog.getByText("There are unsaved changes.")).toBeVisible();
+  expect(await midiMessages(page)).toEqual([]);
+
+  await dialog.getByRole("button", { name: "Arm UF2 mode" }).click();
+  await expect(page.getByRole("dialog", { name: "Request sent" })).toBeVisible();
+  await expect(page.getByText("seconds remaining")).toBeVisible();
+  expect(await midiMessages(page)).toEqual([[0xce, 124]]);
+
+  await page.getByRole("button", { name: "Cancel request" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await midiMessages(page)).toEqual([[0xce, 124], [0xce, 125]]);
+  expect(await midiMessages(page)).not.toContainEqual([0xce, 127]);
+
+  await clearMidiMessages(page);
+  await enterUf2Button.click();
+  await page.getByRole("button", { name: "Arm UF2 mode" }).click();
+  await page.getByRole("dialog", { name: "Request sent" }).getByRole("button", { name: "Close UF2 dialog" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await midiMessages(page)).toEqual([[0xce, 124], [0xce, 125]]);
+});
+
+test("ends curve editing before arming and Escape cancels the active request", async ({ page }) => {
+  await page.getByRole("button", { name: "Connect device" }).click();
+  await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
+
+  const curveA = page.getByLabel("Fader A curve", { exact: true });
+  await curveA.focus();
+  await expect(page.getByText("Curve edit active")).toBeVisible();
+  await clearMidiMessages(page);
+
+  await page.getByRole("button", { name: "Enter UF2 mode" }).click();
+  await page.getByRole("button", { name: "Arm UF2 mode" }).click();
+  const messagesAfterArm = await midiMessages(page);
+  const curveOffIndex = messagesAfterArm.findIndex((message) => message[0] === 0xce && message[1] === 120);
+  const uf2ArmIndex = messagesAfterArm.findIndex((message) => message[0] === 0xce && message[1] === 124);
+  expect(curveOffIndex).toBeGreaterThanOrEqual(0);
+  expect(uf2ArmIndex).toBeGreaterThan(curveOffIndex);
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await midiMessages(page)).toContainEqual([0xce, 125]);
+  await expect(page.getByRole("button", { name: "Enter UF2 mode" })).toBeFocused();
+});
+
+test("expires an ignored UF2 request safely and remains usable", async ({ page }) => {
+  test.setTimeout(20_000);
+  await page.getByRole("button", { name: "Connect device" }).click();
+  await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
+  await clearMidiMessages(page);
+
+  await page.getByRole("button", { name: "Enter UF2 mode" }).click();
+  await page.getByRole("button", { name: "Arm UF2 mode" }).click();
+  await expect(page.getByRole("dialog", { name: "Request expired" })).toBeVisible({ timeout: 12_000 });
+  expect(await midiMessages(page)).toEqual([[0xce, 124], [0xce, 125]]);
+
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByRole("dialog", { name: "Request sent" })).toBeVisible();
+  expect(await midiMessages(page)).toEqual([[0xce, 124], [0xce, 125], [0xce, 124]]);
+  await page.getByRole("button", { name: "Cancel request" }).click();
+  await expect(page.getByRole("button", { name: "Read from device" })).toBeEnabled();
+});
+
+test("treats MIDI disappearance after UF2 arm as expected and resynchronizes on return", async ({ page }) => {
+  await page.getByRole("button", { name: "Connect device" }).click();
+  await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
+  await clearMidiMessages(page);
+  await disconnectMockDeviceOnUf2Arm(page);
+
+  await page.getByRole("button", { name: "Enter UF2 mode" }).click();
+  await page.getByRole("button", { name: "Arm UF2 mode" }).click();
+  const transitionDialog = page.getByRole("dialog", { name: "JUMBLEQ MIDI disconnected" });
+  await expect(transitionDialog).toBeVisible();
+  await expect(transitionDialog.getByText("Check that the JUMBLEQ UF2 drive appears")).toBeVisible();
+  await expect(page.getByText("Automatic reconnect failed")).toHaveCount(0);
+  expect(await midiMessages(page)).toEqual([[0xce, 124]]);
+
+  await reconnectMockDevice(page);
+  await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await midiMessages(page)).toContainEqual([0xce, 126]);
+});
+
+test("keeps the UF2 dialog keyboard-accessible at a mobile viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.getByRole("button", { name: "Connect device" }).click();
+  await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
+
+  const enterUf2Button = page.getByRole("button", { name: "Enter UF2 mode" });
+  await enterUf2Button.click();
+  const dialog = page.getByRole("dialog", { name: "Enter UF2 bootloader mode?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+  const box = await dialog.boundingBox();
+  expect(box?.width).toBeLessThanOrEqual(390);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(enterUf2Button).toBeFocused();
 });
 
 test("imports a validated preset and exports the same settings", async ({ page }) => {
