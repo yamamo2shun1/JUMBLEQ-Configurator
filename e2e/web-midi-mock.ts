@@ -4,6 +4,7 @@ type JumbleqMidiMock = {
   messages: number[][];
   clearMessages: () => void;
   disconnect: () => void;
+  disconnectOnUf2Arm: () => void;
   emit: (data: number[]) => void;
   reconnect: () => void;
   useLegacyConfig: () => void;
@@ -41,6 +42,7 @@ export async function installWebMidiMock(page: Page) {
     ];
     const sentMessages: number[][] = [];
     const stateListeners = new Set<() => void>();
+    let shouldDisconnectOnUf2Arm = false;
 
     const input = {
       id: "jumbleq-input",
@@ -67,6 +69,13 @@ export async function installWebMidiMock(page: Page) {
             for (const configMessage of configMessages) {
               input.onmidimessage?.({ data: new Uint8Array(configMessage) });
             }
+          }, 0);
+        }
+        if (message[0] === 0xce && message[1] === 124 && shouldDisconnectOnUf2Arm) {
+          window.setTimeout(() => {
+            input.state = "disconnected";
+            output.state = "disconnected";
+            notifyStateChange();
           }, 0);
         }
       },
@@ -102,6 +111,9 @@ export async function installWebMidiMock(page: Page) {
         output.state = "disconnected";
         notifyStateChange();
       },
+      disconnectOnUf2Arm() {
+        shouldDisconnectOnUf2Arm = true;
+      },
       emit(data) {
         input.onmidimessage?.({ data: new Uint8Array(data) });
       },
@@ -127,6 +139,10 @@ export async function clearMidiMessages(page: Page) {
 
 export async function disconnectMockDevice(page: Page) {
   await page.evaluate(() => window.__jumbleqMidiMock.disconnect());
+}
+
+export async function disconnectMockDeviceOnUf2Arm(page: Page) {
+  await page.evaluate(() => window.__jumbleqMidiMock.disconnectOnUf2Arm());
 }
 
 export async function reconnectMockDevice(page: Page) {

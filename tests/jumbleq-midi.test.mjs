@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  ARM_UF2_BOOTLOADER,
+  CANCEL_UF2_BOOTLOADER,
   CURVE_EDIT_OFF,
   CURVE_EDIT_ON,
   DVS_FADER_DELAY_DEFAULT_MS,
@@ -33,8 +35,15 @@ function bytes(message) {
 test("control commands use MIDI channel 15 and the documented programs", () => {
   assert.deepEqual(bytes(CURVE_EDIT_OFF), [PROGRAM_CHANGE_CH_15, 120]);
   assert.deepEqual(bytes(CURVE_EDIT_ON), [PROGRAM_CHANGE_CH_15, 121]);
+  assert.deepEqual(bytes(ARM_UF2_BOOTLOADER), [PROGRAM_CHANGE_CH_15, 124]);
+  assert.deepEqual(bytes(CANCEL_UF2_BOOTLOADER), [PROGRAM_CHANGE_CH_15, 125]);
   assert.deepEqual(bytes(REQUEST_CURRENT_CONFIG), [PROGRAM_CHANGE_CH_15, 126]);
   assert.deepEqual(bytes(SAVE_CURRENT_CONFIG), [PROGRAM_CHANGE_CH_15, 127]);
+});
+
+test("UF2 control commands are not decoded as configuration settings", () => {
+  assert.equal(decodeConfigMessage(ARM_UF2_BOOTLOADER), null);
+  assert.equal(decodeConfigMessage(CANCEL_UF2_BOOTLOADER), null);
 });
 
 test("restore defaults contain one value for every synchronized field", () => {
