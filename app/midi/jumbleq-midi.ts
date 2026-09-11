@@ -5,6 +5,8 @@ export type ReturnSource = "USB 1/2" | "USB 3/4" | "None";
 export type HeadphoneSource = "Fader A" | "Fader B" | "Thru" | "Master";
 export type MagneticMode = "CC" | "NOTE";
 export type AuxiliarySide = "A" | "B";
+export type SynthRatioSet = "OCTAVE" | "HARMONIC" | "CHORD";
+export type SynthWarpAlgorithm = "CLEAN" | "CROSSFOLD" | "RING MOD" | "COMPARATOR";
 
 export type MagneticLiveMessage = {
   index: 0 | 1 | 2 | 3;
@@ -31,6 +33,8 @@ export type JumbleqConfig = {
   dvsFaderDelayMs: number;
   reverseA: boolean;
   reverseB: boolean;
+  synthRatioSet: SynthRatioSet;
+  synthWarpAlgorithm: SynthWarpAlgorithm;
 };
 
 export const DVS_FADER_DELAY_MIN_MS = 0;
@@ -55,6 +59,8 @@ export const RESTORE_DEFAULT_CONFIG: JumbleqConfig = {
   dvsFaderDelayMs: DVS_FADER_DELAY_DEFAULT_MS,
   reverseA: false,
   reverseB: false,
+  synthRatioSet: "OCTAVE",
+  synthWarpAlgorithm: "CROSSFOLD",
 };
 
 export type SyncField = keyof JumbleqConfig;
@@ -78,6 +84,8 @@ export const SYNC_FIELDS: readonly SyncField[] = [
   "dvsFaderDelayMs",
   "reverseA",
   "reverseB",
+  "synthRatioSet",
+  "synthWarpAlgorithm",
 ];
 
 export const SYNC_FIELD_COUNT = SYNC_FIELDS.length;
@@ -92,6 +100,8 @@ const returnSources: readonly ReturnSource[] = ["USB 1/2", "USB 3/4", "None"];
 const headphoneSources: readonly HeadphoneSource[] = ["Fader A", "Fader B", "Thru", "Master"];
 const auxiliarySides: readonly AuxiliarySide[] = ["A", "B"];
 const magneticModes: readonly MagneticMode[] = ["CC", "NOTE"];
+const synthRatioSets: readonly SynthRatioSet[] = ["OCTAVE", "HARMONIC", "CHORD"];
+const synthWarpAlgorithms: readonly SynthWarpAlgorithm[] = ["CLEAN", "CROSSFOLD", "RING MOD", "COMPARATOR"];
 
 export const REQUEST_CURRENT_CONFIG = new Uint8Array([
   PROGRAM_CHANGE | MIDI_CHANNEL_15,
@@ -164,6 +174,8 @@ export function encodeProgramSetting(
     case "sensor3": program = 31 + settingIndex(field, value, auxiliarySides); break;
     case "reverseA": program = 33 + booleanIndex(field, value); break;
     case "reverseB": program = 35 + booleanIndex(field, value); break;
+    case "synthRatioSet": program = 37 + settingIndex(field, value, synthRatioSets); break;
+    case "synthWarpAlgorithm": program = 40 + settingIndex(field, value, synthWarpAlgorithms); break;
     case "magMode": program = 122 + settingIndex(field, value, magneticModes); break;
     default: throw new Error(`Unknown setting field: ${String(field)}.`);
   }
@@ -202,6 +214,8 @@ function decodeProgramChange(program: number): DecodedConfigValue | null {
   if (program >= 31 && program <= 32) return { field: "sensor3", value: auxiliarySides[program - 31] };
   if (program >= 33 && program <= 34) return { field: "reverseA", value: program === 34 };
   if (program >= 35 && program <= 36) return { field: "reverseB", value: program === 36 };
+  if (program >= 37 && program <= 39) return { field: "synthRatioSet", value: synthRatioSets[program - 37] };
+  if (program >= 40 && program <= 43) return { field: "synthWarpAlgorithm", value: synthWarpAlgorithms[program - 40] };
   if (program === 122 || program === 123) return { field: "magMode", value: program === 122 ? "CC" : "NOTE" };
   return null;
 }
