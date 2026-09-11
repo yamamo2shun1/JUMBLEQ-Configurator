@@ -1,6 +1,6 @@
 # JUMBLEQ Configurator
 
-This Next.js Web app configures JUMBLEQ routing, channel faders, DVS, and magnetic-switch settings. It is designed for deployment with LOLIPOP! Deploy Now.
+This Next.js Web app configures JUMBLEQ routing, channel faders, Off/DVS/SYNTH input modes, and magnetic-switch settings. It is designed for deployment with LOLIPOP! Deploy Now.
 
 Live app: [https://configurator.jumbleq.io](https://configurator.jumbleq.io)
 

@@ -1,6 +1,7 @@
-import type { JumbleqConfig } from "../midi/jumbleq-midi";
+import type { InputMode, JumbleqConfig } from "../midi/jumbleq-midi";
 
 const inputTypes = ["LINE", "PHONO"] as const;
+const inputModes = ["OFF", "DVS", "SYNTH"] as const;
 const sources = ["CH 1", "CH 2", "USB 1/2", "USB 3/4"] as const;
 const returnSources = ["USB 1/2", "USB 3/4", "None"] as const;
 const headphoneSources = ["Fader A", "Fader B", "Thru", "Master"] as const;
@@ -43,6 +44,15 @@ function optionalBooleanValue(preset: Record<string, unknown>, field: string): b
   return preset[field] === undefined ? false : booleanValue(preset, field);
 }
 
+function inputModeValue(
+  preset: Record<string, unknown>,
+  field: "ch1Mode" | "ch2Mode",
+  legacyField: "dvs1" | "dvs2",
+): InputMode {
+  if (Object.hasOwn(preset, field)) return enumValue(preset, field, inputModes);
+  return booleanValue(preset, legacyField) ? "DVS" : "OFF";
+}
+
 function curveValue(preset: Record<string, unknown>, field: string): number {
   const value = preset[field];
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 100) {
@@ -80,8 +90,8 @@ export function parseJumbleqPreset(text: string): JumbleqConfig {
     assignA: enumValue(preset, "assignA", sources),
     assignB: enumValue(preset, "assignB", sources),
     assignPost: enumValue(preset, "assignPost", sources),
-    dvs1: booleanValue(preset, "dvs1"),
-    dvs2: booleanValue(preset, "dvs2"),
+    ch1Mode: inputModeValue(preset, "ch1Mode", "dvs1"),
+    ch2Mode: inputModeValue(preset, "ch2Mode", "dvs2"),
     returnSource: enumValue(preset, "returnSource", returnSources),
     headphoneSource: enumValue(preset, "headphoneSource", headphoneSources),
     sensor2: enumValue(preset, "sensor2", auxiliarySides),
@@ -97,7 +107,22 @@ export function parseJumbleqPreset(text: string): JumbleqConfig {
 
 export function serializeJumbleqPreset(config: JumbleqConfig) {
   return JSON.stringify({
-    ...config,
+    ch1Type: config.ch1Type,
+    ch2Type: config.ch2Type,
+    assignA: config.assignA,
+    assignB: config.assignB,
+    assignPost: config.assignPost,
+    ch1Mode: config.ch1Mode,
+    ch2Mode: config.ch2Mode,
+    returnSource: config.returnSource,
+    headphoneSource: config.headphoneSource,
+    sensor2: config.sensor2,
+    sensor3: config.sensor3,
+    magMode: config.magMode,
+    curveA: config.curveA,
+    curveB: config.curveB,
     dvsFaderDelayMs: normalizeDvsFaderDelayMs(config.dvsFaderDelayMs),
+    reverseA: config.reverseA,
+    reverseB: config.reverseB,
   }, null, 2);
 }

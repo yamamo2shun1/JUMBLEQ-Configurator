@@ -1,5 +1,6 @@
 export type Source = "CH 1" | "CH 2" | "USB 1/2" | "USB 3/4";
 export type InputType = "LINE" | "PHONO";
+export type InputMode = "OFF" | "DVS" | "SYNTH";
 export type ReturnSource = "USB 1/2" | "USB 3/4" | "None";
 export type HeadphoneSource = "Fader A" | "Fader B" | "Thru" | "Master";
 export type MagneticMode = "CC" | "NOTE";
@@ -18,8 +19,8 @@ export type JumbleqConfig = {
   assignA: Source;
   assignB: Source;
   assignPost: Source;
-  dvs1: boolean;
-  dvs2: boolean;
+  ch1Mode: InputMode;
+  ch2Mode: InputMode;
   returnSource: ReturnSource;
   headphoneSource: HeadphoneSource;
   sensor2: AuxiliarySide;
@@ -42,8 +43,8 @@ export const RESTORE_DEFAULT_CONFIG: JumbleqConfig = {
   assignA: "CH 1",
   assignB: "CH 2",
   assignPost: "USB 1/2",
-  dvs1: false,
-  dvs2: false,
+  ch1Mode: "OFF",
+  ch2Mode: "OFF",
   returnSource: "USB 3/4",
   headphoneSource: "Master",
   sensor2: "A",
@@ -65,8 +66,8 @@ export const SYNC_FIELDS: readonly SyncField[] = [
   "assignA",
   "assignB",
   "assignPost",
-  "dvs1",
-  "dvs2",
+  "ch1Mode",
+  "ch2Mode",
   "returnSource",
   "headphoneSource",
   "sensor2",
@@ -85,6 +86,7 @@ const MIDI_CHANNEL_15 = 14;
 const PROGRAM_CHANGE = 0xc0;
 const CONTROL_CHANGE = 0xb0;
 const inputTypes: readonly InputType[] = ["LINE", "PHONO"];
+const inputModes: readonly InputMode[] = ["OFF", "DVS", "SYNTH"];
 const sources: readonly Source[] = ["CH 1", "CH 2", "USB 1/2", "USB 3/4"];
 const returnSources: readonly ReturnSource[] = ["USB 1/2", "USB 3/4", "None"];
 const headphoneSources: readonly HeadphoneSource[] = ["Fader A", "Fader B", "Thru", "Master"];
@@ -154,14 +156,14 @@ export function encodeProgramSetting(
     case "assignA": program = 4 + settingIndex(field, value, sources); break;
     case "assignB": program = 8 + settingIndex(field, value, sources); break;
     case "assignPost": program = 12 + settingIndex(field, value, sources); break;
-    case "dvs1": program = 16 + booleanIndex(field, value); break;
-    case "dvs2": program = 18 + booleanIndex(field, value); break;
-    case "returnSource": program = 20 + settingIndex(field, value, returnSources); break;
-    case "headphoneSource": program = 23 + settingIndex(field, value, headphoneSources); break;
-    case "sensor2": program = 27 + settingIndex(field, value, auxiliarySides); break;
-    case "sensor3": program = 29 + settingIndex(field, value, auxiliarySides); break;
-    case "reverseA": program = 31 + booleanIndex(field, value); break;
-    case "reverseB": program = 33 + booleanIndex(field, value); break;
+    case "ch1Mode": program = 16 + settingIndex(field, value, inputModes); break;
+    case "ch2Mode": program = 19 + settingIndex(field, value, inputModes); break;
+    case "returnSource": program = 22 + settingIndex(field, value, returnSources); break;
+    case "headphoneSource": program = 25 + settingIndex(field, value, headphoneSources); break;
+    case "sensor2": program = 29 + settingIndex(field, value, auxiliarySides); break;
+    case "sensor3": program = 31 + settingIndex(field, value, auxiliarySides); break;
+    case "reverseA": program = 33 + booleanIndex(field, value); break;
+    case "reverseB": program = 35 + booleanIndex(field, value); break;
     case "magMode": program = 122 + settingIndex(field, value, magneticModes); break;
     default: throw new Error(`Unknown setting field: ${String(field)}.`);
   }
@@ -187,19 +189,19 @@ export function encodeDvsFaderDelaySetting(milliseconds: number) {
 }
 
 function decodeProgramChange(program: number): DecodedConfigValue | null {
-  if (program <= 1) return { field: "ch1Type", value: program === 0 ? "LINE" : "PHONO" };
-  if (program <= 3) return { field: "ch2Type", value: program === 2 ? "LINE" : "PHONO" };
-  if (program <= 7) return { field: "assignA", value: sources[program - 4] };
-  if (program <= 11) return { field: "assignB", value: sources[program - 8] };
-  if (program <= 15) return { field: "assignPost", value: sources[program - 12] };
-  if (program <= 17) return { field: "dvs1", value: program === 17 };
-  if (program <= 19) return { field: "dvs2", value: program === 19 };
-  if (program <= 22) return { field: "returnSource", value: returnSources[program - 20] };
-  if (program <= 26) return { field: "headphoneSource", value: headphoneSources[program - 23] };
-  if (program <= 28) return { field: "sensor2", value: auxiliarySides[program - 27] };
-  if (program <= 30) return { field: "sensor3", value: auxiliarySides[program - 29] };
-  if (program <= 32) return { field: "reverseA", value: program === 32 };
-  if (program <= 34) return { field: "reverseB", value: program === 34 };
+  if (program >= 0 && program <= 1) return { field: "ch1Type", value: inputTypes[program] };
+  if (program >= 2 && program <= 3) return { field: "ch2Type", value: inputTypes[program - 2] };
+  if (program >= 4 && program <= 7) return { field: "assignA", value: sources[program - 4] };
+  if (program >= 8 && program <= 11) return { field: "assignB", value: sources[program - 8] };
+  if (program >= 12 && program <= 15) return { field: "assignPost", value: sources[program - 12] };
+  if (program >= 16 && program <= 18) return { field: "ch1Mode", value: inputModes[program - 16] };
+  if (program >= 19 && program <= 21) return { field: "ch2Mode", value: inputModes[program - 19] };
+  if (program >= 22 && program <= 24) return { field: "returnSource", value: returnSources[program - 22] };
+  if (program >= 25 && program <= 28) return { field: "headphoneSource", value: headphoneSources[program - 25] };
+  if (program >= 29 && program <= 30) return { field: "sensor2", value: auxiliarySides[program - 29] };
+  if (program >= 31 && program <= 32) return { field: "sensor3", value: auxiliarySides[program - 31] };
+  if (program >= 33 && program <= 34) return { field: "reverseA", value: program === 34 };
+  if (program >= 35 && program <= 36) return { field: "reverseB", value: program === 36 };
   if (program === 122 || program === 123) return { field: "magMode", value: program === 122 ? "CC" : "NOTE" };
   return null;
 }

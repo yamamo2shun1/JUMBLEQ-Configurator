@@ -78,12 +78,13 @@ button { color: inherit; }
 .segmented { padding: 3px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; border: 1px solid #363732; border-radius: 10px; background: #141512; }
 .segmented button { height: 34px; border: 0; border-radius: 7px; background: none; color: #777a71; cursor: pointer; font: 650 9px/1 var(--font-geist-mono); letter-spacing: .08em; }
 .segmented button.active { color: var(--ink); background: var(--channel-color); box-shadow: 0 3px 12px color-mix(in srgb, var(--channel-color) 18%, transparent); }
-.channel-dvs-setting { min-height: 60px; margin-top: 18px; padding-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #30312c; position: relative; z-index: 1; }
-.channel-dvs-setting > span { display: grid; gap: 5px; }
-.channel-dvs-setting b { color: #d5d6cf; font: 650 8px/1 var(--font-geist-mono); letter-spacing: .08em; }
-.channel-dvs-setting small { color: #777a71; font-size: 10px; }
-.channel-dvs-setting .switch.on { border-color: color-mix(in srgb, var(--channel-color) 50%, transparent); background: color-mix(in srgb, var(--channel-color) 16%, transparent); }
-.channel-dvs-setting .switch.on i { background: var(--channel-color); box-shadow: 0 0 8px color-mix(in srgb, var(--channel-color) 40%, transparent); }
+.channel-mode-setting { min-height: 78px; margin-top: 18px; padding-top: 16px; display: grid; gap: 10px; border-top: 1px solid #30312c; position: relative; z-index: 1; }
+.channel-mode-setting > span { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.channel-mode-setting b { color: #d5d6cf; font: 650 8px/1 var(--font-geist-mono); letter-spacing: .08em; }
+.channel-mode-setting small { color: #777a71; font-size: 9px; text-align: right; }
+.input-mode-choices { padding: 3px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; border: 1px solid #363732; border-radius: 10px; background: #141512; }
+.input-mode-choices button { min-width: 0; height: 32px; padding: 0 3px; border: 0; border-radius: 7px; color: #777a71; background: none; cursor: pointer; font: 650 8px/1 var(--font-geist-mono); letter-spacing: .04em; }
+.input-mode-choices button.active { color: #10110e; background: var(--channel-color); box-shadow: 0 3px 12px color-mix(in srgb, var(--channel-color) 18%, transparent); }
 
 .signal-card { min-height: 260px; padding: 22px 24px; }
 .signal-card-header { display: flex; align-items: flex-start; justify-content: space-between; color: #74776e; }

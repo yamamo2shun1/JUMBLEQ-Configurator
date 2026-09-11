@@ -29,6 +29,7 @@ import {
   curvePercentToMidiCC,
   DVS_FADER_DELAY_MAX_MS,
   DVS_FADER_DELAY_MIN_MS,
+  InputMode,
   JumbleqConfig,
   normalizeDvsFaderDelayMs,
   ProgramSettingField,
@@ -46,6 +47,12 @@ import {
 import { parseJumbleqPreset, serializeJumbleqPreset } from "./presets/jumbleq-preset";
 
 const sources: Source[] = ["CH 1", "CH 2", "USB 1/2", "USB 3/4"];
+const inputModes: InputMode[] = ["OFF", "DVS", "SYNTH"];
+const inputModeStatus: Record<InputMode, string> = {
+  OFF: "Standard input routing",
+  DVS: "DVS mode",
+  SYNTH: "Synth mode",
+};
 const sourceLabels: Record<Source, string> = {
   "CH 1": "ANALOG 1",
   "CH 2": "ANALOG 2",
@@ -53,6 +60,26 @@ const sourceLabels: Record<Source, string> = {
   "USB 3/4": "USB 3/4",
 };
 const MAX_PRESET_FILE_BYTES = 64 * 1024;
+
+function resolveInputModeRouting(config: JumbleqConfig): JumbleqConfig {
+  const nextConfig = { ...config };
+
+  if (config.ch1Mode !== "OFF") {
+    if (nextConfig.assignA === "CH 1") nextConfig.assignA = "USB 1/2";
+    if (nextConfig.assignB === "CH 1") nextConfig.assignB = "USB 1/2";
+    if (nextConfig.assignPost === "CH 1") nextConfig.assignPost = "USB 1/2";
+    if (nextConfig.returnSource === "USB 1/2") nextConfig.returnSource = "None";
+  }
+
+  if (config.ch2Mode !== "OFF") {
+    if (nextConfig.assignA === "CH 2") nextConfig.assignA = "USB 3/4";
+    if (nextConfig.assignB === "CH 2") nextConfig.assignB = "USB 3/4";
+    if (nextConfig.assignPost === "CH 2") nextConfig.assignPost = "USB 3/4";
+    if (nextConfig.returnSource === "USB 3/4") nextConfig.returnSource = "None";
+  }
+
+  return nextConfig;
+}
 
 function SourceSelect({
   label,
@@ -496,8 +523,8 @@ export default function Home() {
   const [curveA, setCurveA] = useState(RESTORE_DEFAULT_CONFIG.curveA);
   const [curveB, setCurveB] = useState(RESTORE_DEFAULT_CONFIG.curveB);
   const [dvsFaderDelayMs, setDvsFaderDelayMs] = useState(RESTORE_DEFAULT_CONFIG.dvsFaderDelayMs);
-  const [dvs1, setDvs1] = useState(RESTORE_DEFAULT_CONFIG.dvs1);
-  const [dvs2, setDvs2] = useState(RESTORE_DEFAULT_CONFIG.dvs2);
+  const [ch1Mode, setCh1Mode] = useState<InputMode>(RESTORE_DEFAULT_CONFIG.ch1Mode);
+  const [ch2Mode, setCh2Mode] = useState<InputMode>(RESTORE_DEFAULT_CONFIG.ch2Mode);
   const [returnSource, setReturnSource] = useState<ReturnSource>(RESTORE_DEFAULT_CONFIG.returnSource);
   const [headphoneSource, setHeadphoneSource] = useState<"Fader A" | "Fader B" | "Thru" | "Master">(RESTORE_DEFAULT_CONFIG.headphoneSource);
   const [magMode, setMagMode] = useState<"CC" | "NOTE">(RESTORE_DEFAULT_CONFIG.magMode);
@@ -533,8 +560,8 @@ export default function Home() {
     setCurveA(config.curveA);
     setCurveB(config.curveB);
     setDvsFaderDelayMs(config.dvsFaderDelayMs);
-    setDvs1(config.dvs1);
-    setDvs2(config.dvs2);
+    setCh1Mode(config.ch1Mode);
+    setCh2Mode(config.ch2Mode);
     setReturnSource(config.returnSource);
     setHeadphoneSource(config.headphoneSource);
     setMagMode(config.magMode);
@@ -582,10 +609,12 @@ export default function Home() {
   const connected = midiStatus === "ready";
   const reconnecting = midiStatus === "reconnecting";
   const connectionBusy = midiStatus === "requesting" || midiStatus === "connecting" || reconnecting;
-  const settingsLocked = connectionBusy || midiStatus === "syncing";
+  const settingsLocked = connectionBusy || midiStatus === "syncing" || (hasOpenPorts && midiStatus !== "ready");
   const canArmUf2 = connected && hasOpenPorts;
+  const ch1InsertActive = ch1Mode !== "OFF";
+  const ch2InsertActive = ch2Mode !== "OFF";
   const disabledFaderSources = sources.filter((source) => (
-    (source === "CH 1" && dvs1) || (source === "CH 2" && dvs2)
+    (source === "CH 1" && ch1InsertActive) || (source === "CH 2" && ch2InsertActive)
   ));
   const connectButtonLabel = midiStatus === "unsupported"
     ? "MIDI unsupported"
@@ -641,8 +670,11 @@ export default function Home() {
     setSaved(false);
   };
 
-  const updateDvs = (channel: 1 | 2, enabled: boolean) => {
-    if (enabled) {
+  const updateInputMode = (channel: 1 | 2, mode: InputMode) => {
+    const previousMode = channel === 1 ? ch1Mode : ch2Mode;
+    if (previousMode === mode) return;
+
+    if (previousMode === "OFF" && mode !== "OFF") {
       const analogSource: Source = channel === 1 ? "CH 1" : "CH 2";
       const usbFallback: Source = channel === 1 ? "USB 1/2" : "USB 3/4";
       if (assignA === analogSource) updateProgram(setAssignA, "assignA", usbFallback);
@@ -651,8 +683,8 @@ export default function Home() {
       if (returnSource === usbFallback) updateProgram(setReturnSource, "returnSource", "None");
     }
 
-    if (channel === 1) updateProgram(setDvs1, "dvs1", enabled);
-    else updateProgram(setDvs2, "dvs2", enabled);
+    if (channel === 1) updateProgram(setCh1Mode, "ch1Mode", mode);
+    else updateProgram(setCh2Mode, "ch2Mode", mode);
   };
 
   const updateCurve = (
@@ -697,8 +729,6 @@ export default function Home() {
       sendProgramSetting("assignA", config.assignA),
       sendProgramSetting("assignB", config.assignB),
       sendProgramSetting("assignPost", config.assignPost),
-      sendProgramSetting("dvs1", config.dvs1),
-      sendProgramSetting("dvs2", config.dvs2),
       sendProgramSetting("returnSource", config.returnSource),
       sendProgramSetting("headphoneSource", config.headphoneSource),
       sendProgramSetting("sensor2", config.sensor2),
@@ -706,6 +736,8 @@ export default function Home() {
       sendProgramSetting("reverseA", config.reverseA),
       sendProgramSetting("reverseB", config.reverseB),
       sendProgramSetting("magMode", config.magMode),
+      sendProgramSetting("ch1Mode", config.ch1Mode),
+      sendProgramSetting("ch2Mode", config.ch2Mode),
       sendCurveSetting("curveA", config.curveA),
       sendCurveSetting("curveB", config.curveB),
       dvsFaderDelaySupported === false
@@ -724,7 +756,7 @@ export default function Home() {
   };
 
   const exportPreset = () => {
-    const preset = { ch1Type, ch2Type, assignA, assignB, assignPost, curveA, curveB, dvsFaderDelayMs, dvs1, dvs2, returnSource, headphoneSource, magMode, sensor2, sensor3, reverseA, reverseB };
+    const preset = { ch1Type, ch2Type, assignA, assignB, assignPost, curveA, curveB, dvsFaderDelayMs, ch1Mode, ch2Mode, returnSource, headphoneSource, magMode, sensor2, sensor3, reverseA, reverseB };
     const url = URL.createObjectURL(new Blob([serializeJumbleqPreset(preset)], { type: "application/json" }));
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = "jumbleq-preset.json"; anchor.click(); URL.revokeObjectURL(url);
   };
@@ -736,7 +768,7 @@ export default function Home() {
 
     try {
       if (file.size > MAX_PRESET_FILE_BYTES) throw new Error("Preset file is too large.");
-      const preset = parseJumbleqPreset(await file.text());
+      const preset = resolveInputModeRouting(parseJumbleqPreset(await file.text()));
       applySyncedConfig(preset);
       const sent = sendConfigToDevice(preset);
       setDirty(true);
@@ -807,7 +839,7 @@ export default function Home() {
               <span>{connected ? "USB MIDI · Synced" : reconnecting ? "Waiting for USB" : midiStatus === "syncing" ? `Reading ${syncReceived}/${SYNC_FIELD_COUNT}` : "Connect via USB"}</span>
             </div>
           </div>
-          <span className="version">Configurator preview · v0.9.7</span>
+          <span className="version">Configurator preview · v0.9.8</span>
         </aside>
 
         {menuOpen && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
@@ -830,9 +862,11 @@ export default function Home() {
                   {(["LINE", "PHONO"] as const).map((item) => <button key={item} className={ch1Type === item ? "active" : ""} onClick={() => updateProgram(setCh1Type, "ch1Type", item)}>{item}</button>)}
                 </div>
               </div>
-              <div className="channel-dvs-setting">
-                <span><b>DIGITAL VINYL SYSTEM</b><small>{dvs1 ? "DVS enabled" : "DVS disabled"}</small></span>
-                <button className={`switch ${dvs1 ? "on" : ""}`} type="button" role="switch" aria-label="Channel 1 DVS" aria-checked={dvs1} onClick={() => updateDvs(1, !dvs1)}><i /></button>
+              <div className="channel-mode-setting">
+                <span><b>INPUT MODE</b><small>{inputModeStatus[ch1Mode]}</small></span>
+                <div className="input-mode-choices" role="group" aria-label="Channel 1 input mode">
+                  {inputModes.map((mode) => <button key={mode} type="button" className={ch1Mode === mode ? "active" : ""} aria-label={`Channel 1 mode ${mode}`} aria-pressed={ch1Mode === mode} onClick={() => updateInputMode(1, mode)}>{mode}</button>)}
+                </div>
               </div>
             </article>
 
@@ -854,9 +888,11 @@ export default function Home() {
                   {(["LINE", "PHONO"] as const).map((item) => <button key={item} className={ch2Type === item ? "active" : ""} onClick={() => updateProgram(setCh2Type, "ch2Type", item)}>{item}</button>)}
                 </div>
               </div>
-              <div className="channel-dvs-setting">
-                <span><b>DIGITAL VINYL SYSTEM</b><small>{dvs2 ? "DVS enabled" : "DVS disabled"}</small></span>
-                <button className={`switch ${dvs2 ? "on" : ""}`} type="button" role="switch" aria-label="Channel 2 DVS" aria-checked={dvs2} onClick={() => updateDvs(2, !dvs2)}><i /></button>
+              <div className="channel-mode-setting">
+                <span><b>INPUT MODE</b><small>{inputModeStatus[ch2Mode]}</small></span>
+                <div className="input-mode-choices" role="group" aria-label="Channel 2 input mode">
+                  {inputModes.map((mode) => <button key={mode} type="button" className={ch2Mode === mode ? "active" : ""} aria-label={`Channel 2 mode ${mode}`} aria-pressed={ch2Mode === mode} onClick={() => updateInputMode(2, mode)}>{mode}</button>)}
+                </div>
               </div>
             </article>
           </section>
@@ -922,7 +958,7 @@ export default function Home() {
 
             <article className="control-card routing-control-card">
               <div className="control-card-title"><span className="control-icon"><Cable size={18} /></span><div><h3>Return routing</h3><p>Select the USB return input or disable the return.</p></div></div>
-              <div className="select-shell select-a routing-select"><select aria-label="USB return input" value={returnSource} onChange={(event) => updateProgram(setReturnSource, "returnSource", event.target.value as ReturnSource)}><option value="USB 1/2" disabled={dvs1}>USB 1/2</option><option value="USB 3/4" disabled={dvs2}>USB 3/4</option><option value="None">None</option></select><ChevronDown size={16} /></div>
+              <div className="select-shell select-a routing-select"><select aria-label="USB return input" value={returnSource} onChange={(event) => updateProgram(setReturnSource, "returnSource", event.target.value as ReturnSource)}><option value="USB 1/2" disabled={ch1InsertActive}>USB 1/2</option><option value="USB 3/4" disabled={ch2InsertActive}>USB 3/4</option><option value="None">None</option></select><ChevronDown size={16} /></div>
             </article>
           </section>
           </section>

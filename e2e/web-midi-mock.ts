@@ -7,7 +7,8 @@ type JumbleqMidiMock = {
   disconnectOnUf2Arm: () => void;
   emit: (data: number[]) => void;
   reconnect: () => void;
-  useLegacyConfig: () => void;
+  useMissingDvsFaderDelayConfig: () => void;
+  useOldMidiMapConfig: () => void;
 };
 
 declare global {
@@ -25,16 +26,16 @@ export async function installWebMidiMock(page: Page) {
       [0xce, 0],
       [0xce, 3],
       [0xce, 7],
-      [0xce, 8],
+      [0xce, 10],
       [0xce, 14],
       [0xce, 17],
-      [0xce, 18],
-      [0xce, 22],
+      [0xce, 21],
       [0xce, 24],
-      [0xce, 28],
-      [0xce, 29],
-      [0xce, 32],
-      [0xce, 33],
+      [0xce, 26],
+      [0xce, 30],
+      [0xce, 31],
+      [0xce, 34],
+      [0xce, 35],
       [0xbe, 20, 32],
       [0xbe, 21, 95],
       [0xbe, 22, 42],
@@ -122,8 +123,29 @@ export async function installWebMidiMock(page: Page) {
         output.state = "connected";
         notifyStateChange();
       },
-      useLegacyConfig() {
+      useMissingDvsFaderDelayConfig() {
         configMessages = configMessages.filter((message) => !(message[0] === 0xbe && message[1] === 22));
+      },
+      useOldMidiMapConfig() {
+        configMessages = [
+          [0xce, 0],
+          [0xce, 3],
+          [0xce, 7],
+          [0xce, 8],
+          [0xce, 14],
+          [0xce, 17],
+          [0xce, 18],
+          [0xce, 22],
+          [0xce, 24],
+          [0xce, 28],
+          [0xce, 29],
+          [0xce, 32],
+          [0xce, 33],
+          [0xbe, 20, 32],
+          [0xbe, 21, 95],
+          [0xbe, 22, 42],
+          [0xce, 123],
+        ];
       },
     };
   });
@@ -153,6 +175,10 @@ export async function emitMockMidiMessage(page: Page, data: number[]) {
   await page.evaluate((message) => window.__jumbleqMidiMock.emit(message), data);
 }
 
-export async function useLegacyMidiConfig(page: Page) {
-  await page.evaluate(() => window.__jumbleqMidiMock.useLegacyConfig());
+export async function useMissingDvsFaderDelayConfig(page: Page) {
+  await page.evaluate(() => window.__jumbleqMidiMock.useMissingDvsFaderDelayConfig());
+}
+
+export async function useOldMidiMapConfig(page: Page) {
+  await page.evaluate(() => window.__jumbleqMidiMock.useOldMidiMapConfig());
 }
