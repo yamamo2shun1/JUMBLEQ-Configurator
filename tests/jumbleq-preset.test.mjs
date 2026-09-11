@@ -22,6 +22,8 @@ const validPreset = {
   dvsFaderDelayMs: 73,
   reverseA: true,
   reverseB: false,
+  synthRatioSet: "CHORD",
+  synthWarpAlgorithm: "COMPARATOR",
 };
 
 function withoutInputModes(preset) {
@@ -98,7 +100,7 @@ test("parser rejects malformed JSON and non-object roots", () => {
 });
 
 test("parser rejects every missing required field", () => {
-  for (const field of Object.keys(validPreset).filter((field) => !["reverseA", "reverseB", "dvsFaderDelayMs"].includes(field))) {
+  for (const field of Object.keys(validPreset).filter((field) => !["reverseA", "reverseB", "dvsFaderDelayMs", "synthRatioSet", "synthWarpAlgorithm"].includes(field))) {
     const incomplete = { ...validPreset };
     delete incomplete[field];
     const expectedField = field === "ch1Mode" ? "dvs1" : field === "ch2Mode" ? "dvs2" : field;
@@ -121,6 +123,15 @@ test("legacy presets default a missing DVS fader delay to 50 ms", () => {
   const legacyPreset = { ...validPreset };
   delete legacyPreset.dvsFaderDelayMs;
   assert.equal(parseJumbleqPreset(JSON.stringify(legacyPreset)).dvsFaderDelayMs, 50);
+});
+
+test("legacy presets default missing synth selections", () => {
+  const legacyPreset = { ...validPreset };
+  delete legacyPreset.synthRatioSet;
+  delete legacyPreset.synthWarpAlgorithm;
+  const imported = parseJumbleqPreset(JSON.stringify(legacyPreset));
+  assert.equal(imported.synthRatioSet, "OCTAVE");
+  assert.equal(imported.synthWarpAlgorithm, "CROSSFOLD");
 });
 
 test("parser converts DVS fader delay to an integer and clamps it to 0-120 ms", () => {
@@ -161,6 +172,8 @@ test("parser rejects unsupported enum values", () => {
     sensor2: "C",
     sensor3: "C",
     magMode: "POLY",
+    synthRatioSet: "FIFTHS",
+    synthWarpAlgorithm: "FOLD",
   };
 
   for (const [field, value] of Object.entries(invalidValues)) {

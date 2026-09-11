@@ -22,6 +22,7 @@ import {
   TriangleAlert,
   Upload,
   Usb,
+  Waves,
   X,
 } from "lucide-react";
 import { createFaderCurvePath } from "./fader-curve";
@@ -36,6 +37,8 @@ import {
   RESTORE_DEFAULT_CONFIG,
   ReturnSource,
   Source,
+  SynthRatioSet,
+  SynthWarpAlgorithm,
   SYNC_FIELD_COUNT,
 } from "./midi/jumbleq-midi";
 import {
@@ -48,6 +51,8 @@ import { parseJumbleqPreset, serializeJumbleqPreset } from "./presets/jumbleq-pr
 
 const sources: Source[] = ["CH 1", "CH 2", "USB 1/2", "USB 3/4"];
 const inputModes: InputMode[] = ["OFF", "DVS", "SYNTH"];
+const synthRatioSets: SynthRatioSet[] = ["OCTAVE", "HARMONIC", "CHORD"];
+const synthWarpAlgorithms: SynthWarpAlgorithm[] = ["CLEAN", "CROSSFOLD", "RING MOD", "COMPARATOR"];
 const inputModeStatus: Record<InputMode, string> = {
   OFF: "Standard input routing",
   DVS: "DVS mode",
@@ -295,6 +300,8 @@ function HelpDialog({
   const browserReady = browserSupport?.midi === true && browserSupport.secure;
   const deviceLabel = connected
     ? `${SYNC_FIELD_COUNT}/${SYNC_FIELD_COUNT} settings synced`
+    : midiStatus === "update-required"
+      ? "Firmware update required"
     : midiStatus === "reconnecting"
       ? "Waiting for USB reconnection"
       : midiStatus === "syncing"
@@ -532,6 +539,8 @@ export default function Home() {
   const [sensor3, setSensor3] = useState<"A" | "B">(RESTORE_DEFAULT_CONFIG.sensor3);
   const [reverseA, setReverseA] = useState(RESTORE_DEFAULT_CONFIG.reverseA);
   const [reverseB, setReverseB] = useState(RESTORE_DEFAULT_CONFIG.reverseB);
+  const [synthRatioSet, setSynthRatioSet] = useState<SynthRatioSet>(RESTORE_DEFAULT_CONFIG.synthRatioSet);
+  const [synthWarpAlgorithm, setSynthWarpAlgorithm] = useState<SynthWarpAlgorithm>(RESTORE_DEFAULT_CONFIG.synthWarpAlgorithm);
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
   const [presetNotice, setPresetNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -569,6 +578,8 @@ export default function Home() {
     setSensor3(config.sensor3);
     setReverseA(config.reverseA);
     setReverseB(config.reverseB);
+    setSynthRatioSet(config.synthRatioSet);
+    setSynthWarpAlgorithm(config.synthWarpAlgorithm);
     setDirty(false);
     setSaved(false);
   }, []);
@@ -607,12 +618,14 @@ export default function Home() {
   } = useJumbleqMidi(applySyncedConfig);
 
   const connected = midiStatus === "ready";
+  const updateRequired = midiStatus === "update-required";
   const reconnecting = midiStatus === "reconnecting";
   const connectionBusy = midiStatus === "requesting" || midiStatus === "connecting" || reconnecting;
   const settingsLocked = connectionBusy || midiStatus === "syncing" || (hasOpenPorts && midiStatus !== "ready");
-  const canArmUf2 = connected && hasOpenPorts;
+  const canArmUf2 = (connected || updateRequired) && hasOpenPorts;
   const ch1InsertActive = ch1Mode !== "OFF";
   const ch2InsertActive = ch2Mode !== "OFF";
+  const synthActive = ch1Mode === "SYNTH" || ch2Mode === "SYNTH";
   const disabledFaderSources = sources.filter((source) => (
     (source === "CH 1" && ch1InsertActive) || (source === "CH 2" && ch2InsertActive)
   ));
@@ -626,6 +639,8 @@ export default function Home() {
           ? "Reconnecting…"
           : midiStatus === "syncing"
             ? `Syncing ${syncReceived}/${SYNC_FIELD_COUNT}`
+            : updateRequired
+              ? "Firmware update required"
             : connected
               ? "JUMBLEQ connected"
               : hasOpenPorts
@@ -735,6 +750,8 @@ export default function Home() {
       sendProgramSetting("sensor3", config.sensor3),
       sendProgramSetting("reverseA", config.reverseA),
       sendProgramSetting("reverseB", config.reverseB),
+      sendProgramSetting("synthRatioSet", config.synthRatioSet),
+      sendProgramSetting("synthWarpAlgorithm", config.synthWarpAlgorithm),
       sendProgramSetting("magMode", config.magMode),
       sendProgramSetting("ch1Mode", config.ch1Mode),
       sendProgramSetting("ch2Mode", config.ch2Mode),
@@ -756,7 +773,7 @@ export default function Home() {
   };
 
   const exportPreset = () => {
-    const preset = { ch1Type, ch2Type, assignA, assignB, assignPost, curveA, curveB, dvsFaderDelayMs, ch1Mode, ch2Mode, returnSource, headphoneSource, magMode, sensor2, sensor3, reverseA, reverseB };
+    const preset = { ch1Type, ch2Type, assignA, assignB, assignPost, curveA, curveB, dvsFaderDelayMs, ch1Mode, ch2Mode, returnSource, headphoneSource, magMode, sensor2, sensor3, reverseA, reverseB, synthRatioSet, synthWarpAlgorithm };
     const url = URL.createObjectURL(new Blob([serializeJumbleqPreset(preset)], { type: "application/json" }));
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = "jumbleq-preset.json"; anchor.click(); URL.revokeObjectURL(url);
   };
@@ -811,7 +828,7 @@ export default function Home() {
         <div className="topbar-actions">
           <button className="help-button" aria-label="Open help" aria-haspopup="dialog" aria-expanded={helpOpen} onClick={openHelp}><CircleHelp size={18} /><span>Help</span></button>
           <button
-            className={`connect-button ${connected ? "is-connected" : ""}`}
+            className={`connect-button ${connected ? "is-connected" : updateRequired ? "needs-update" : ""}`}
             onClick={() => hasOpenPorts ? void disconnect() : void connect()}
             disabled={connectionBusy || midiStatus === "unsupported"}
           >
@@ -836,10 +853,10 @@ export default function Home() {
             <Cable size={18} />
             <div>
               <strong>{hasOpenPorts || reconnecting ? connectedInputName : "No device"}</strong>
-              <span>{connected ? "USB MIDI · Synced" : reconnecting ? "Waiting for USB" : midiStatus === "syncing" ? `Reading ${syncReceived}/${SYNC_FIELD_COUNT}` : "Connect via USB"}</span>
+              <span>{connected ? "USB MIDI · Synced" : updateRequired ? "USB MIDI · Update required" : reconnecting ? "Waiting for USB" : midiStatus === "syncing" ? `Reading ${syncReceived}/${SYNC_FIELD_COUNT}` : "Connect via USB"}</span>
             </div>
           </div>
-          <span className="version">Configurator preview · v0.9.8</span>
+          <span className="version">Configurator preview · v0.9.9</span>
         </aside>
 
         {menuOpen && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
@@ -848,7 +865,7 @@ export default function Home() {
           <div className="page-heading">
             <div className="page-heading-title"><p className="eyebrow">AUDIO</p><h1>Audio settings</h1></div>
             <p className="page-heading-description">Configure analog inputs, signal routing, monitoring, and channel-fader response.</p>
-            <div className={`device-pill ${connected ? "online" : reconnecting ? "reconnecting" : ""}`}><span />{connected ? "Online" : reconnecting ? "Reconnecting…" : midiStatus === "syncing" ? "Syncing…" : "Offline"}</div>
+            <div className={`device-pill ${connected ? "online" : updateRequired ? "needs-update" : reconnecting ? "reconnecting" : ""}`}><span />{connected ? "Online" : updateRequired ? "Update required" : reconnecting ? "Reconnecting…" : midiStatus === "syncing" ? "Syncing…" : "Offline"}</div>
           </div>
 
           <fieldset className="settings-fieldset" disabled={settingsLocked} aria-busy={settingsLocked}>
@@ -893,6 +910,16 @@ export default function Home() {
                 <div className="input-mode-choices" role="group" aria-label="Channel 2 input mode">
                   {inputModes.map((mode) => <button key={mode} type="button" className={ch2Mode === mode ? "active" : ""} aria-label={`Channel 2 mode ${mode}`} aria-pressed={ch2Mode === mode} onClick={() => updateInputMode(2, mode)}>{mode}</button>)}
                 </div>
+              </div>
+            </article>
+          </section>
+
+          <section className="synth-settings" aria-label="Synth oscillator settings">
+            <article className={`control-card synth-control-card ${synthActive ? "" : "is-disabled"}`}>
+              <div className="control-card-title"><span className="control-icon"><Waves size={18} /></span><div><h3>Synth oscillator</h3><p>Choose the shared pitch relationship and warp algorithm for both SYNTH channels.</p></div></div>
+              <div className="synth-setting-grid">
+                <div className="synth-setting"><span>Ratio set</span><div className="choice-pills synth-ratio-pills" role="group" aria-label="Synth ratio set">{synthRatioSets.map((ratioSet) => <button key={ratioSet} type="button" disabled={!synthActive} className={synthRatioSet === ratioSet ? "active" : ""} aria-pressed={synthRatioSet === ratioSet} onClick={() => updateProgram(setSynthRatioSet, "synthRatioSet", ratioSet)}>{ratioSet}</button>)}</div></div>
+                <div className="synth-setting"><span>Warp algorithm</span><div className="choice-pills synth-warp-pills" role="group" aria-label="Synth warp algorithm">{synthWarpAlgorithms.map((algorithm) => <button key={algorithm} type="button" disabled={!synthActive} className={synthWarpAlgorithm === algorithm ? "active" : ""} aria-pressed={synthWarpAlgorithm === algorithm} onClick={() => updateProgram(setSynthWarpAlgorithm, "synthWarpAlgorithm", algorithm)}>{algorithm}</button>)}</div></div>
               </div>
             </article>
           </section>
@@ -991,12 +1018,14 @@ export default function Home() {
             <article className={`device-card ${accessGranted ? "has-port-panel" : ""}`}>
               <div className="device-summary">
                 <div className="device-identity">
-                  <span className={`device-art ${connected ? "online" : reconnecting ? "reconnecting" : ""}`}><Usb size={25} /></span>
+                  <span className={`device-art ${connected ? "online" : updateRequired ? "needs-update" : reconnecting ? "reconnecting" : ""}`}><Usb size={25} /></span>
                   <div>
                     <h3>{hasOpenPorts || reconnecting ? connectedInputName : "JUMBLEQ Configurator"}</h3>
                     <p>
                       {connected
                         ? "Current settings loaded from JUMBLEQ"
+                        : updateRequired
+                          ? "Connected to JUMBLEQ; update the firmware to configure it"
                         : reconnecting
                           ? "Waiting for JUMBLEQ to reconnect via USB"
                           : midiStatus === "syncing"
@@ -1006,10 +1035,10 @@ export default function Home() {
                               : "Connect a unit to read its current settings"}
                     </p>
                   </div>
-                  <span className="firmware-chip">{connected ? `${SYNC_FIELD_COUNT}/${SYNC_FIELD_COUNT} synced` : reconnecting ? "RECONNECTING" : "MIDI Ch.15"}</span>
+                  <span className={`firmware-chip ${updateRequired ? "needs-update" : ""}`}>{connected ? `${SYNC_FIELD_COUNT}/${SYNC_FIELD_COUNT} synced` : updateRequired ? "UPDATE REQUIRED" : reconnecting ? "RECONNECTING" : "MIDI Ch.15"}</span>
                 </div>
 
-                {midiError && <p className="midi-error" role="alert">{midiError}</p>}
+                {midiError && <p className={`midi-error ${updateRequired ? "is-warning" : ""}`} role="alert">{midiError}</p>}
 
                 {accessGranted && (
                   <div className="midi-port-panel">
@@ -1039,7 +1068,7 @@ export default function Home() {
               </div>
 
               <div className="device-actions">
-                {hasOpenPorts && <button onClick={requestSync} disabled={midiStatus === "syncing"}><RefreshCw size={16} />Read from device</button>}
+                {hasOpenPorts && <button onClick={requestSync} disabled={midiStatus === "syncing" || updateRequired}><RefreshCw size={16} />Read from device</button>}
                 <button onClick={reset} disabled={settingsLocked}><RotateCcw size={16} />Restore defaults</button>
                 <button onClick={exportPreset}><Download size={16} />Export preset</button>
                 <button onClick={() => presetFileInputRef.current?.click()} disabled={settingsLocked}><Upload size={16} />Import preset</button>
@@ -1054,7 +1083,7 @@ export default function Home() {
                   disabled={!canArmUf2}
                   aria-haspopup="dialog"
                   aria-expanded={uf2DialogOpen}
-                  title={!canArmUf2 ? "Connect and synchronize JUMBLEQ before entering UF2 mode." : undefined}
+                  title={!canArmUf2 ? "Connect JUMBLEQ before entering UF2 mode." : undefined}
                 ><Power size={16} />Enter UF2 mode</button>
               </div>
             </article>

@@ -7,6 +7,8 @@ const returnSources = ["USB 1/2", "USB 3/4", "None"] as const;
 const headphoneSources = ["Fader A", "Fader B", "Thru", "Master"] as const;
 const auxiliarySides = ["A", "B"] as const;
 const magneticModes = ["CC", "NOTE"] as const;
+const synthRatioSets = ["OCTAVE", "HARMONIC", "CHORD"] as const;
+const synthWarpAlgorithms = ["CLEAN", "CROSSFOLD", "RING MOD", "COMPARATOR"] as const;
 const DVS_FADER_DELAY_DEFAULT_MS = 50;
 const DVS_FADER_DELAY_MIN_MS = 0;
 const DVS_FADER_DELAY_MAX_MS = 120;
@@ -42,6 +44,15 @@ function booleanValue(preset: Record<string, unknown>, field: string): boolean {
 
 function optionalBooleanValue(preset: Record<string, unknown>, field: string): boolean {
   return preset[field] === undefined ? false : booleanValue(preset, field);
+}
+
+function optionalEnumValue<const Value extends string>(
+  preset: Record<string, unknown>,
+  field: string,
+  allowedValues: readonly Value[],
+  fallback: Value,
+): Value {
+  return preset[field] === undefined ? fallback : enumValue(preset, field, allowedValues);
 }
 
 function inputModeValue(
@@ -102,6 +113,8 @@ export function parseJumbleqPreset(text: string): JumbleqConfig {
     dvsFaderDelayMs: dvsFaderDelayValue(preset),
     reverseA: optionalBooleanValue(preset, "reverseA"),
     reverseB: optionalBooleanValue(preset, "reverseB"),
+    synthRatioSet: optionalEnumValue(preset, "synthRatioSet", synthRatioSets, "OCTAVE"),
+    synthWarpAlgorithm: optionalEnumValue(preset, "synthWarpAlgorithm", synthWarpAlgorithms, "CROSSFOLD"),
   };
 }
 
@@ -124,5 +137,7 @@ export function serializeJumbleqPreset(config: JumbleqConfig) {
     dvsFaderDelayMs: normalizeDvsFaderDelayMs(config.dvsFaderDelayMs),
     reverseA: config.reverseA,
     reverseB: config.reverseB,
+    synthRatioSet: config.synthRatioSet,
+    synthWarpAlgorithm: config.synthWarpAlgorithm,
   }, null, 2);
 }

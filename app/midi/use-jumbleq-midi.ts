@@ -67,6 +67,7 @@ export type MidiStatus =
   | "reconnecting"
   | "syncing"
   | "ready"
+  | "update-required"
   | "error";
 
 export type Uf2TransitionState =
@@ -265,12 +266,16 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
     syncFieldsRef.current.add(decoded.field);
     const dumpEnded = isConfigDumpEndMessage(event.data);
 
-    if (dumpEnded && !syncFieldsRef.current.has("reverseB")) {
+    if (dumpEnded && (
+      !syncFieldsRef.current.has("reverseB")
+      || !syncFieldsRef.current.has("synthRatioSet")
+      || !syncFieldsRef.current.has("synthWarpAlgorithm")
+    )) {
       clearSyncTimer();
       setSyncReceived(syncFieldsRef.current.size);
       setDvsFaderDelaySupported(null);
-      setError("This JUMBLEQ firmware uses an older MIDI configuration map. Update the firmware before using this Configurator version.");
-      setStatus("error");
+      setError("This JUMBLEQ firmware uses an older MIDI configuration map. Configuration controls are unavailable; enter UF2 mode to update the firmware.");
+      setStatus("update-required");
       return;
     }
 
@@ -544,8 +549,8 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
 
   const armUf2Bootloader = useCallback(() => {
     const output = outputRef.current;
-    if (status !== "ready" || !output || output.state === "disconnected") {
-      setError("JUMBLEQ must be connected and synchronized before entering UF2 mode.");
+    if ((status !== "ready" && status !== "update-required") || !output || output.state === "disconnected") {
+      setError("JUMBLEQ must be connected before entering UF2 mode.");
       return false;
     }
     if (uf2TransitionStateRef.current === "awaiting-switch") return false;

@@ -65,8 +65,10 @@ test("restore defaults contain one value for every synchronized field", () => {
     "dvsFaderDelayMs",
     "reverseA",
     "reverseB",
+    "synthRatioSet",
+    "synthWarpAlgorithm",
   ]);
-  assert.equal(SYNC_FIELD_COUNT, 17);
+  assert.equal(SYNC_FIELD_COUNT, 19);
   assert.deepEqual(Object.keys(RESTORE_DEFAULT_CONFIG).sort(), [...SYNC_FIELDS].sort());
   assert.deepEqual(RESTORE_DEFAULT_CONFIG, {
     ch1Type: "LINE",
@@ -86,6 +88,8 @@ test("restore defaults contain one value for every synchronized field", () => {
     dvsFaderDelayMs: DVS_FADER_DELAY_DEFAULT_MS,
     reverseA: false,
     reverseB: false,
+    synthRatioSet: "OCTAVE",
+    synthWarpAlgorithm: "CROSSFOLD",
   });
 });
 
@@ -127,6 +131,13 @@ const programSettingCases = [
   ["reverseA", true, 34],
   ["reverseB", false, 35],
   ["reverseB", true, 36],
+  ["synthRatioSet", "OCTAVE", 37],
+  ["synthRatioSet", "HARMONIC", 38],
+  ["synthRatioSet", "CHORD", 39],
+  ["synthWarpAlgorithm", "CLEAN", 40],
+  ["synthWarpAlgorithm", "CROSSFOLD", 41],
+  ["synthWarpAlgorithm", "RING MOD", 42],
+  ["synthWarpAlgorithm", "COMPARATOR", 43],
   ["magMode", "CC", 122],
   ["magMode", "NOTE", 123],
 ];
@@ -147,6 +158,8 @@ test("program encoder rejects values that could otherwise select another setting
   assert.throws(() => encodeProgramSetting("dvs1", true), /Unknown setting field/);
   assert.throws(() => encodeProgramSetting("dvs2", false), /Unknown setting field/);
   assert.throws(() => encodeProgramSetting("reverseA", "true"), /Invalid value for reverseA/);
+  assert.throws(() => encodeProgramSetting("synthRatioSet", "FIFTHS"), /Invalid value for synthRatioSet/);
+  assert.throws(() => encodeProgramSetting("synthWarpAlgorithm", "FOLD"), /Invalid value for synthWarpAlgorithm/);
   assert.throws(() => encodeProgramSetting("magMode", "POLY"), /Invalid value for magMode/);
   assert.throws(() => encodeProgramSetting("unknown", "LINE"), /Unknown setting field/);
 });
@@ -220,7 +233,7 @@ test("decoder ignores incomplete, unrelated, and wrong-channel MIDI messages", (
     [],
     [PROGRAM_CHANGE_CH_15],
     [0xc0, 0],
-    [PROGRAM_CHANGE_CH_15, 37],
+    [PROGRAM_CHANGE_CH_15, 44],
     [CONTROL_CHANGE_CH_15, 20],
     [0xb0, 20, 64],
     [0xb0, 22, 64],

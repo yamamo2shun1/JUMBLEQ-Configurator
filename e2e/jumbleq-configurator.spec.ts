@@ -30,6 +30,8 @@ const importedPreset = {
   dvsFaderDelayMs: 73,
   reverseA: true,
   reverseB: false,
+  synthRatioSet: "HARMONIC",
+  synthWarpAlgorithm: "RING MOD",
 };
 
 test.beforeEach(async ({ page }) => {
@@ -56,13 +58,14 @@ test("shows the verified iPad MIDIWeb Browser guidance", async ({ page }) => {
 test("groups audio routing and MIDI controls by function", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Configurator sections" });
   await expect(navigation.getByRole("link")).toHaveText(["Audio", "MIDI", "Device"]);
-  await expect(page.getByText("Configurator preview · v0.9.8")).toBeVisible();
+  await expect(page.getByText("Configurator preview · v0.9.9")).toBeVisible();
 
   const audioSettings = page.locator("#audio");
   await expect(page.getByRole("heading", { name: "Audio settings" })).toBeVisible();
   await expect(page.locator(".page-heading > .page-heading-description")).toHaveText("Configure analog inputs, signal routing, monitoring, and channel-fader response.");
   await expect(audioSettings.getByRole("heading", { name: "Monitor routing" })).toBeVisible();
   await expect(audioSettings.getByRole("heading", { name: "Return routing" })).toBeVisible();
+  await expect(audioSettings.getByRole("heading", { name: "Synth oscillator" })).toBeVisible();
   await expect(audioSettings.getByRole("heading", { name: "Response curves" })).toBeVisible();
   await expect(audioSettings.getByText("CHANNEL FADER ROUTING")).toBeVisible();
   await expect(audioSettings.getByText("CHANNEL FADERS", { exact: true })).toBeVisible();
@@ -72,6 +75,26 @@ test("groups audio routing and MIDI controls by function", async ({ page }) => {
   await expect(midiSettings.getByRole("heading", { name: "MIDI settings" })).toBeVisible();
   await expect(midiSettings.getByRole("heading", { name: "Magnetic switches" })).toBeVisible();
   await expect(midiSettings.getByRole("heading", { name: "Monitor routing" })).toHaveCount(0);
+});
+
+test("enables synth oscillator controls only while a channel uses SYNTH mode", async ({ page }) => {
+  const synthCard = page.getByLabel("Synth oscillator settings").locator(".synth-control-card");
+  const ratioButton = page.getByRole("group", { name: "Synth ratio set" }).getByRole("button", { name: "HARMONIC" });
+  const warpButton = page.getByRole("group", { name: "Synth warp algorithm" }).getByRole("button", { name: "RING MOD" });
+
+  await expect(synthCard).toHaveClass(/is-disabled/);
+  await expect(ratioButton).toBeDisabled();
+  await expect(warpButton).toBeDisabled();
+
+  await page.getByRole("button", { name: "Channel 1 mode SYNTH" }).click();
+  await expect(synthCard).not.toHaveClass(/is-disabled/);
+  await expect(ratioButton).toBeEnabled();
+  await expect(warpButton).toBeEnabled();
+
+  await page.getByRole("button", { name: "Channel 1 mode OFF" }).click();
+  await expect(synthCard).toHaveClass(/is-disabled/);
+  await expect(ratioButton).toBeDisabled();
+  await expect(warpButton).toBeDisabled();
 });
 
 test("draws independent firmware curves with opposite A/B directions", async ({ page }) => {
@@ -227,7 +250,7 @@ test("connects to JUMBLEQ and reflects the complete initial sync", async ({ page
 
   await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
   await expect(page.getByText("Current settings loaded from JUMBLEQ")).toBeVisible();
-  await expect(page.getByText("17/17 synced")).toBeVisible();
+  await expect(page.getByText("19/19 synced")).toBeVisible();
   await expect(page.getByRole("group", { name: "Channel 2 input type" }).getByRole("button", { name: "PHONO" })).toHaveClass(/active/);
   await expect(page.getByRole("button", { name: "Channel 1 mode DVS" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Channel 2 mode SYNTH" })).toHaveAttribute("aria-pressed", "true");
@@ -240,6 +263,8 @@ test("connects to JUMBLEQ and reflects the complete initial sync", async ({ page
   await expect(page.getByRole("slider", { name: "DVS Fader Delay" })).toHaveValue("42");
   await expect(page.getByRole("switch", { name: "Fader A reverse" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("switch", { name: "Fader B reverse" })).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByRole("group", { name: "Synth ratio set" }).getByRole("button", { name: "CHORD" })).toHaveClass(/active/);
+  await expect(page.getByRole("group", { name: "Synth warp algorithm" }).getByRole("button", { name: "COMPARATOR" })).toHaveClass(/active/);
   await expect(page.locator(".curve-control-a .fader-reverse-setting")).toContainText("Reverse");
   await expect(page.locator(".curve-control-b .fader-reverse-setting")).toContainText("Normal");
   await emitMockMidiMessage(page, [0xb0, 22, 120]);
@@ -264,6 +289,8 @@ test("sends setting, curve edit, and EEPROM save messages", async ({ page }) => 
   await dvsFaderDelay.blur();
   await page.getByRole("switch", { name: "Fader A reverse" }).click();
   await page.getByRole("switch", { name: "Fader B reverse" }).click();
+  await page.getByRole("group", { name: "Synth ratio set" }).getByRole("button", { name: "HARMONIC" }).click();
+  await page.getByRole("group", { name: "Synth warp algorithm" }).getByRole("button", { name: "RING MOD" }).click();
   await page.getByRole("button", { name: "Save to device" }).click();
 
   await expect(page.getByText("Save command sent to JUMBLEQ")).toBeVisible();
@@ -279,6 +306,8 @@ test("sends setting, curve edit, and EEPROM save messages", async ({ page }) => 
     [0xce, 120],
     [0xce, 33],
     [0xce, 36],
+    [0xce, 38],
+    [0xce, 42],
     [0xce, 127],
   ]));
   const delayMessageIndex = sentMessages.findIndex((message) => (
@@ -357,7 +386,7 @@ test("automatically reconnects and synchronizes after a USB interruption", async
   await reconnectMockDevice(page);
 
   await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
-  await expect(page.getByText("17/17 synced")).toBeVisible();
+  await expect(page.getByText("19/19 synced")).toBeVisible();
   expect(await midiMessages(page)).toContainEqual([0xce, 126]);
 });
 
@@ -509,6 +538,8 @@ test("imports a validated preset and exports the same settings", async ({ page }
   await expect(page.getByRole("button", { name: "Channel 2 mode SYNTH" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("switch", { name: "Fader A reverse" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("switch", { name: "Fader B reverse" })).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByRole("group", { name: "Synth ratio set" }).getByRole("button", { name: "HARMONIC" })).toHaveClass(/active/);
+  await expect(page.getByRole("group", { name: "Synth warp algorithm" }).getByRole("button", { name: "RING MOD" })).toHaveClass(/active/);
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export preset" }).click();
@@ -543,19 +574,25 @@ test("falls back to a fixed 50 ms delay for older firmware", async ({ page }) =>
   await page.getByRole("button", { name: "Connect device" }).click();
 
   await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
-  await expect(page.getByText("17/17 synced")).toBeVisible();
+  await expect(page.getByText("19/19 synced")).toBeVisible();
   await expect(page.getByRole("slider", { name: "DVS Fader Delay" })).toHaveValue("50");
   await expect(page.getByRole("slider", { name: "DVS Fader Delay" })).toBeDisabled();
   await expect(page.getByText(/Requires JUMBLEQ firmware v0\.14\.3/)).toBeVisible();
 });
 
-test("rejects firmware using the older MIDI configuration map", async ({ page }) => {
+test("keeps UF2 update available for firmware using the older MIDI configuration map", async ({ page }) => {
   await useOldMidiMapConfig(page);
   await page.getByRole("button", { name: "Connect device" }).click();
 
-  await expect(page.getByText("This JUMBLEQ firmware uses an older MIDI configuration map. Update the firmware before using this Configurator version.")).toBeVisible();
+  await expect(page.getByText("This JUMBLEQ firmware uses an older MIDI configuration map. Configuration controls are unavailable; enter UF2 mode to update the firmware.")).toBeVisible();
   await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Firmware update required" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Channel 1 mode SYNTH" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Restore defaults" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Read from device" })).toBeDisabled();
   expect(await midiMessages(page)).toEqual([[0xce, 126]]);
+
+  await page.getByRole("button", { name: "Enter UF2 mode" }).click();
+  await page.getByRole("dialog", { name: "Enter UF2 bootloader mode?" }).getByRole("button", { name: "Arm UF2 mode" }).click();
+  expect(await midiMessages(page)).toEqual([[0xce, 126], [0xce, 124]]);
 });
