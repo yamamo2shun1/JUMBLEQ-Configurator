@@ -264,6 +264,16 @@ export function useJumbleqMidi(onConfig: (config: JumbleqConfig) => void) {
     syncValuesRef.current = { ...syncValuesRef.current, [decoded.field]: decoded.value };
     syncFieldsRef.current.add(decoded.field);
     const dumpEnded = isConfigDumpEndMessage(event.data);
+
+    if (dumpEnded && !syncFieldsRef.current.has("reverseB")) {
+      clearSyncTimer();
+      setSyncReceived(syncFieldsRef.current.size);
+      setDvsFaderDelaySupported(null);
+      setError("This JUMBLEQ firmware uses an older MIDI configuration map. Update the firmware before using this Configurator version.");
+      setStatus("error");
+      return;
+    }
+
     const missingFields = SYNC_FIELDS.filter((field) => !syncFieldsRef.current.has(field));
     const canUseLegacyFallback = dumpEnded
       && missingFields.length === 1

@@ -10,8 +10,8 @@ const validPreset = {
   assignA: "USB 1/2",
   assignB: "CH 2",
   assignPost: "USB 3/4",
-  dvs1: true,
-  dvs2: false,
+  ch1Mode: "DVS",
+  ch2Mode: "SYNTH",
   returnSource: "None",
   headphoneSource: "Fader B",
   sensor2: "B",
@@ -24,9 +24,59 @@ const validPreset = {
   reverseB: false,
 };
 
+function withoutInputModes(preset) {
+  const legacyFields = { ...preset };
+  delete legacyFields.ch1Mode;
+  delete legacyFields.ch2Mode;
+  return legacyFields;
+}
+
 test("current flat preset format serializes and parses without data loss", () => {
   assert.deepEqual(parseJumbleqPreset(serializeJumbleqPreset(validPreset)), validPreset);
   assert.deepEqual(parseJumbleqPreset(serializeJumbleqPreset(RESTORE_DEFAULT_CONFIG)), RESTORE_DEFAULT_CONFIG);
+});
+
+test("legacy DVS booleans migrate to OFF/DVS input modes", () => {
+  const sharedFields = withoutInputModes(validPreset);
+  const imported = parseJumbleqPreset(JSON.stringify({
+    ...sharedFields,
+    dvs1: true,
+    dvs2: false,
+  }));
+
+  assert.deepEqual(imported, {
+    ...sharedFields,
+    ch1Mode: "DVS",
+    ch2Mode: "OFF",
+  });
+  assert.equal(Object.hasOwn(imported, "dvs1"), false);
+  assert.equal(Object.hasOwn(imported, "dvs2"), false);
+});
+
+test("validated input modes take precedence over legacy DVS booleans", () => {
+  const imported = parseJumbleqPreset(JSON.stringify({
+    ...validPreset,
+    ch1Mode: "SYNTH",
+    ch2Mode: "OFF",
+    dvs1: true,
+    dvs2: true,
+  }));
+
+  assert.equal(imported.ch1Mode, "SYNTH");
+  assert.equal(imported.ch2Mode, "OFF");
+});
+
+test("serialization emits only current input mode fields", () => {
+  const serialized = JSON.parse(serializeJumbleqPreset({
+    ...validPreset,
+    dvs1: true,
+    dvs2: false,
+  }));
+
+  assert.equal(serialized.ch1Mode, "DVS");
+  assert.equal(serialized.ch2Mode, "SYNTH");
+  assert.equal(Object.hasOwn(serialized, "dvs1"), false);
+  assert.equal(Object.hasOwn(serialized, "dvs2"), false);
 });
 
 test("parser returns only supported fields", () => {
@@ -51,7 +101,8 @@ test("parser rejects every missing required field", () => {
   for (const field of Object.keys(validPreset).filter((field) => !["reverseA", "reverseB", "dvsFaderDelayMs"].includes(field))) {
     const incomplete = { ...validPreset };
     delete incomplete[field];
-    assert.throws(() => parseJumbleqPreset(JSON.stringify(incomplete)), new RegExp(field), field);
+    const expectedField = field === "ch1Mode" ? "dvs1" : field === "ch2Mode" ? "dvs2" : field;
+    assert.throws(() => parseJumbleqPreset(JSON.stringify(incomplete)), new RegExp(expectedField), field);
   }
 });
 
@@ -103,6 +154,8 @@ test("parser rejects unsupported enum values", () => {
     assignA: "Bluetooth",
     assignB: "Bluetooth",
     assignPost: "Bluetooth",
+    ch1Mode: "VINYL",
+    ch2Mode: "ANALOG",
     returnSource: "USB 5/6",
     headphoneSource: "Return",
     sensor2: "C",
@@ -119,9 +172,15 @@ test("parser rejects unsupported enum values", () => {
   }
 });
 
-test("parser requires real boolean DVS values", () => {
-  assert.throws(() => parseJumbleqPreset(JSON.stringify({ ...validPreset, dvs1: 1 })), /dvs1/);
-  assert.throws(() => parseJumbleqPreset(JSON.stringify({ ...validPreset, dvs2: "false" })), /dvs2/);
+test("parser rejects invalid new modes and invalid legacy DVS values", () => {
+  for (const value of [1, true, null, "VINYL"]) {
+    assert.throws(() => parseJumbleqPreset(JSON.stringify({ ...validPreset, ch1Mode: value })), /ch1Mode/);
+    assert.throws(() => parseJumbleqPreset(JSON.stringify({ ...validPreset, ch2Mode: value })), /ch2Mode/);
+  }
+
+  const legacyFields = withoutInputModes(validPreset);
+  assert.throws(() => parseJumbleqPreset(JSON.stringify({ ...legacyFields, dvs1: 1, dvs2: false })), /dvs1/);
+  assert.throws(() => parseJumbleqPreset(JSON.stringify({ ...legacyFields, dvs1: true, dvs2: "false" })), /dvs2/);
 });
 
 test("parser requires real boolean reverse values when present", () => {

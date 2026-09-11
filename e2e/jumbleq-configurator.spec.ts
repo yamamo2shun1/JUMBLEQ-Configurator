@@ -8,7 +8,8 @@ import {
   installWebMidiMock,
   midiMessages,
   reconnectMockDevice,
-  useLegacyMidiConfig,
+  useMissingDvsFaderDelayConfig,
+  useOldMidiMapConfig,
 } from "./web-midi-mock";
 
 const importedPreset = {
@@ -16,9 +17,9 @@ const importedPreset = {
   ch2Type: "LINE",
   assignA: "USB 1/2",
   assignB: "USB 3/4",
-  assignPost: "CH 2",
-  dvs1: true,
-  dvs2: false,
+  assignPost: "USB 1/2",
+  ch1Mode: "DVS",
+  ch2Mode: "SYNTH",
   returnSource: "None",
   headphoneSource: "Thru",
   sensor2: "B",
@@ -55,7 +56,7 @@ test("shows the verified iPad MIDIWeb Browser guidance", async ({ page }) => {
 test("groups audio routing and MIDI controls by function", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Configurator sections" });
   await expect(navigation.getByRole("link")).toHaveText(["Audio", "MIDI", "Device"]);
-  await expect(page.getByText("Configurator preview · v0.9.7")).toBeVisible();
+  await expect(page.getByText("Configurator preview · v0.9.8")).toBeVisible();
 
   const audioSettings = page.locator("#audio");
   await expect(page.getByRole("heading", { name: "Audio settings" })).toBeVisible();
@@ -110,24 +111,28 @@ test("labels physical routing sources as analog inputs", async ({ page }) => {
   await expect(faderA.locator("option:checked")).toHaveText("ANALOG 2");
 });
 
-test("reroutes and disables conflicting fader and return sources when enabling DVS", async ({ page }) => {
+test("reroutes and disables conflicting sources before enabling DVS or SYNTH", async ({ page }) => {
   await page.getByRole("button", { name: "Connect device" }).click();
   await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
 
-  const dvs1Switch = page.getByRole("switch", { name: "Channel 1 DVS" });
+  const ch1Off = page.getByRole("button", { name: "Channel 1 mode OFF" });
+  const ch1Dvs = page.getByRole("button", { name: "Channel 1 mode DVS" });
+  const ch2Off = page.getByRole("button", { name: "Channel 2 mode OFF" });
+  const ch2Synth = page.getByRole("button", { name: "Channel 2 mode SYNTH" });
   const faderA = page.getByRole("combobox", { name: "Fader A", exact: true });
   const faderB = page.getByRole("combobox", { name: "Fader B", exact: true });
   const postFader = page.getByRole("combobox", { name: "Post fader", exact: true });
   const returnInput = page.getByLabel("USB return input");
 
-  await dvs1Switch.click();
+  await ch1Off.click();
+  await ch2Off.click();
   await faderA.selectOption("CH 1");
   await faderB.selectOption("CH 1");
   await postFader.selectOption("CH 1");
   await returnInput.selectOption("USB 1/2");
   await clearMidiMessages(page);
 
-  await dvs1Switch.click();
+  await ch1Dvs.click();
 
   await expect(faderA).toHaveValue("USB 1/2");
   await expect(faderB).toHaveValue("USB 1/2");
@@ -142,18 +147,17 @@ test("reroutes and disables conflicting fader and return sources when enabling D
     [0xce, 6],
     [0xce, 10],
     [0xce, 14],
-    [0xce, 22],
+    [0xce, 24],
     [0xce, 17],
   ]);
 
-  const dvs2Switch = page.getByRole("switch", { name: "Channel 2 DVS" });
   await faderA.selectOption("CH 2");
   await faderB.selectOption("CH 2");
   await postFader.selectOption("CH 2");
   await returnInput.selectOption("USB 3/4");
   await clearMidiMessages(page);
 
-  await dvs2Switch.click();
+  await ch2Synth.click();
 
   await expect(faderA).toHaveValue("USB 3/4");
   await expect(faderB).toHaveValue("USB 3/4");
@@ -168,9 +172,54 @@ test("reroutes and disables conflicting fader and return sources when enabling D
     [0xce, 7],
     [0xce, 11],
     [0xce, 15],
-    [0xce, 22],
-    [0xce, 19],
+    [0xce, 24],
+    [0xce, 21],
   ]);
+
+  await clearMidiMessages(page);
+  await page.getByRole("button", { name: "Channel 1 mode SYNTH" }).click();
+  expect(await midiMessages(page)).toEqual([[0xce, 18]]);
+
+  await clearMidiMessages(page);
+  await ch1Off.click();
+  await expect(faderA).toHaveValue("USB 3/4");
+  await expect(faderB).toHaveValue("USB 3/4");
+  await expect(postFader).toHaveValue("USB 3/4");
+  await expect(returnInput).toHaveValue("None");
+  expect(await midiMessages(page)).toEqual([[0xce, 16]]);
+});
+
+test("sends the exact Program Change value for every input mode", async ({ page }) => {
+  await page.getByRole("button", { name: "Connect device" }).click();
+  await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
+  await clearMidiMessages(page);
+
+  for (const [channel, mode] of [
+    [1, "OFF"],
+    [1, "DVS"],
+    [1, "SYNTH"],
+    [2, "OFF"],
+    [2, "DVS"],
+    [2, "SYNTH"],
+  ] as const) {
+    await page.getByRole("button", { name: `Channel ${channel} mode ${mode}` }).click();
+  }
+
+  expect(await midiMessages(page)).toEqual([
+    [0xce, 16],
+    [0xce, 17],
+    [0xce, 18],
+    [0xce, 19],
+    [0xce, 20],
+    [0xce, 21],
+  ]);
+  await expect(page.getByText("Delays magnetic-switch channel-fader changes only while DVS is enabled. Shared by Input Ch. 1 and Input Ch. 2.")).toBeVisible();
+
+  await clearMidiMessages(page);
+  await page.getByRole("button", { name: "Restore defaults" }).click();
+  await expect(page.getByRole("button", { name: "Channel 1 mode OFF" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Channel 2 mode OFF" })).toHaveAttribute("aria-pressed", "true");
+  expect(await midiMessages(page)).toEqual(expect.arrayContaining([[0xce, 16], [0xce, 19]]));
 });
 
 test("connects to JUMBLEQ and reflects the complete initial sync", async ({ page }) => {
@@ -180,7 +229,8 @@ test("connects to JUMBLEQ and reflects the complete initial sync", async ({ page
   await expect(page.getByText("Current settings loaded from JUMBLEQ")).toBeVisible();
   await expect(page.getByText("17/17 synced")).toBeVisible();
   await expect(page.getByRole("group", { name: "Channel 2 input type" }).getByRole("button", { name: "PHONO" })).toHaveClass(/active/);
-  await expect(page.getByRole("article", { name: "Channel 1 input" }).getByRole("switch", { name: "Channel 1 DVS" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("button", { name: "Channel 1 mode DVS" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Channel 2 mode SYNTH" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("combobox", { name: "Fader A", exact: true })).toHaveValue("USB 3/4");
   await expect(page.getByLabel("Headphone monitor source")).toHaveValue("Fader B");
   await expect(page.getByLabel("USB return input")).toHaveValue("None");
@@ -204,7 +254,7 @@ test("sends setting, curve edit, and EEPROM save messages", async ({ page }) => 
 
   await page.getByRole("group", { name: "Channel 1 input type" }).getByRole("button", { name: "PHONO" }).click();
   await page.getByRole("combobox", { name: "Fader A", exact: true }).selectOption("USB 3/4");
-  await page.getByRole("switch", { name: "Channel 1 DVS" }).click();
+  await page.getByRole("button", { name: "Channel 1 mode OFF" }).click();
   await page.getByLabel("USB return input").selectOption("None");
   const curveA = page.getByLabel("Fader A curve", { exact: true });
   await curveA.fill("80");
@@ -222,13 +272,13 @@ test("sends setting, curve edit, and EEPROM save messages", async ({ page }) => 
     [0xce, 1],
     [0xce, 7],
     [0xce, 16],
-    [0xce, 22],
+    [0xce, 24],
     [0xce, 121],
     [0xbe, 20, 102],
     [0xbe, 22, 120],
     [0xce, 120],
-    [0xce, 31],
-    [0xce, 34],
+    [0xce, 33],
+    [0xce, 36],
     [0xce, 127],
   ]));
   const delayMessageIndex = sentMessages.findIndex((message) => (
@@ -424,6 +474,22 @@ test("keeps the UF2 dialog keyboard-accessible at a mobile viewport", async ({ p
   await expect(enterUf2Button).toBeFocused();
 });
 
+test("keeps input mode choices keyboard-accessible at a mobile viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  const channelCard = page.getByRole("article", { name: "Channel 1 input" });
+  const modeGroup = channelCard.getByRole("group", { name: "Channel 1 input mode" });
+  const synthMode = modeGroup.getByRole("button", { name: "Channel 1 mode SYNTH" });
+
+  await synthMode.focus();
+  await page.keyboard.press("Space");
+  await expect(synthMode).toHaveAttribute("aria-pressed", "true");
+  await expect(channelCard.getByText("Synth mode")).toBeVisible();
+
+  const cardBox = await channelCard.boundingBox();
+  const modeBox = await modeGroup.boundingBox();
+  expect(modeBox?.width).toBeLessThanOrEqual(cardBox?.width ?? 0);
+});
+
 test("imports a validated preset and exports the same settings", async ({ page }) => {
   await page.getByLabel("Import preset file").setInputFiles({
     name: "test-preset.json",
@@ -439,6 +505,8 @@ test("imports a validated preset and exports the same settings", async ({ page }
   await expect(page.getByLabel("Fader A curve", { exact: true })).toHaveValue("35");
   await expect(page.getByLabel("Fader B curve", { exact: true })).toHaveValue("65");
   await expect(page.getByRole("slider", { name: "DVS Fader Delay" })).toHaveValue("73");
+  await expect(page.getByRole("button", { name: "Channel 1 mode DVS" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Channel 2 mode SYNTH" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("switch", { name: "Fader A reverse" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("switch", { name: "Fader B reverse" })).toHaveAttribute("aria-checked", "false");
 
@@ -451,8 +519,27 @@ test("imports a validated preset and exports the same settings", async ({ page }
   expect(JSON.parse(await readFile(path!, "utf8"))).toEqual(importedPreset);
 });
 
+test("migrates legacy DVS booleans when importing a preset", async ({ page }) => {
+  const legacyPreset: Record<string, unknown> = {
+    ...importedPreset,
+    dvs1: true,
+    dvs2: false,
+  };
+  delete legacyPreset.ch1Mode;
+  delete legacyPreset.ch2Mode;
+
+  await page.getByLabel("Import preset file").setInputFiles({
+    name: "legacy-preset.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(legacyPreset)),
+  });
+
+  await expect(page.getByRole("button", { name: "Channel 1 mode DVS" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Channel 2 mode OFF" })).toHaveAttribute("aria-pressed", "true");
+});
+
 test("falls back to a fixed 50 ms delay for older firmware", async ({ page }) => {
-  await useLegacyMidiConfig(page);
+  await useMissingDvsFaderDelayConfig(page);
   await page.getByRole("button", { name: "Connect device" }).click();
 
   await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toBeVisible();
@@ -460,4 +547,15 @@ test("falls back to a fixed 50 ms delay for older firmware", async ({ page }) =>
   await expect(page.getByRole("slider", { name: "DVS Fader Delay" })).toHaveValue("50");
   await expect(page.getByRole("slider", { name: "DVS Fader Delay" })).toBeDisabled();
   await expect(page.getByText(/Requires JUMBLEQ firmware v0\.14\.3/)).toBeVisible();
+});
+
+test("rejects firmware using the older MIDI configuration map", async ({ page }) => {
+  await useOldMidiMapConfig(page);
+  await page.getByRole("button", { name: "Connect device" }).click();
+
+  await expect(page.getByText("This JUMBLEQ firmware uses an older MIDI configuration map. Update the firmware before using this Configurator version.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "JUMBLEQ connected" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Channel 1 mode SYNTH" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Restore defaults" })).toBeDisabled();
+  expect(await midiMessages(page)).toEqual([[0xce, 126]]);
 });
