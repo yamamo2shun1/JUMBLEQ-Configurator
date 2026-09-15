@@ -85,7 +85,7 @@ button { color: inherit; }
 .channel-mode-setting > span { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .channel-mode-setting b { color: #d5d6cf; font: 650 8px/1 var(--font-geist-mono); letter-spacing: .08em; }
 .channel-mode-setting small { color: #777a71; font-size: 9px; text-align: right; }
-.input-mode-choices { padding: 3px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; border: 1px solid #363732; border-radius: 10px; background: #141512; }
+.input-mode-choices { padding: 3px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; border: 1px solid #363732; border-radius: 10px; background: #141512; }
 .input-mode-choices button { min-width: 0; height: 32px; padding: 0 3px; border: 0; border-radius: 7px; color: #777a71; background: none; cursor: pointer; font: 650 8px/1 var(--font-geist-mono); letter-spacing: .04em; }
 .input-mode-choices button.active { color: #10110e; background: var(--channel-color); box-shadow: 0 3px 12px color-mix(in srgb, var(--channel-color) 18%, transparent); }
 
