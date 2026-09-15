@@ -22,7 +22,6 @@ import {
   TriangleAlert,
   Upload,
   Usb,
-  Waves,
   X,
 } from "lucide-react";
 import { createFaderCurvePath } from "./fader-curve";
@@ -50,9 +49,7 @@ import {
 import { parseJumbleqPreset, serializeJumbleqPreset } from "./presets/jumbleq-preset";
 
 const sources: Source[] = ["CH 1", "CH 2", "USB 1/2", "USB 3/4"];
-const inputModes: InputMode[] = ["OFF", "DVS", "SYNTH"];
-const synthRatioSets: SynthRatioSet[] = ["OCTAVE", "HARMONIC", "CHORD"];
-const synthWarpAlgorithms: SynthWarpAlgorithm[] = ["CLEAN", "CROSSFOLD", "RING MOD", "COMPARATOR"];
+const visibleInputModes: InputMode[] = ["OFF", "DVS"];
 const inputModeStatus: Record<InputMode, string> = {
   OFF: "Standard input routing",
   DVS: "DVS mode",
@@ -625,7 +622,6 @@ export default function Home() {
   const canArmUf2 = (connected || updateRequired) && hasOpenPorts;
   const ch1InsertActive = ch1Mode !== "OFF";
   const ch2InsertActive = ch2Mode !== "OFF";
-  const synthActive = ch1Mode === "SYNTH" || ch2Mode === "SYNTH";
   const disabledFaderSources = sources.filter((source) => (
     (source === "CH 1" && ch1InsertActive) || (source === "CH 2" && ch2InsertActive)
   ));
@@ -882,7 +878,7 @@ export default function Home() {
               <div className="channel-mode-setting">
                 <span><b>INPUT MODE</b><small>{inputModeStatus[ch1Mode]}</small></span>
                 <div className="input-mode-choices" role="group" aria-label="Channel 1 input mode">
-                  {inputModes.map((mode) => <button key={mode} type="button" className={ch1Mode === mode ? "active" : ""} aria-label={`Channel 1 mode ${mode}`} aria-pressed={ch1Mode === mode} onClick={() => updateInputMode(1, mode)}>{mode}</button>)}
+                  {visibleInputModes.map((mode) => <button key={mode} type="button" className={ch1Mode === mode ? "active" : ""} aria-label={`Channel 1 mode ${mode}`} aria-pressed={ch1Mode === mode} onClick={() => updateInputMode(1, mode)}>{mode}</button>)}
                 </div>
               </div>
             </article>
@@ -908,18 +904,8 @@ export default function Home() {
               <div className="channel-mode-setting">
                 <span><b>INPUT MODE</b><small>{inputModeStatus[ch2Mode]}</small></span>
                 <div className="input-mode-choices" role="group" aria-label="Channel 2 input mode">
-                  {inputModes.map((mode) => <button key={mode} type="button" className={ch2Mode === mode ? "active" : ""} aria-label={`Channel 2 mode ${mode}`} aria-pressed={ch2Mode === mode} onClick={() => updateInputMode(2, mode)}>{mode}</button>)}
+                  {visibleInputModes.map((mode) => <button key={mode} type="button" className={ch2Mode === mode ? "active" : ""} aria-label={`Channel 2 mode ${mode}`} aria-pressed={ch2Mode === mode} onClick={() => updateInputMode(2, mode)}>{mode}</button>)}
                 </div>
-              </div>
-            </article>
-          </section>
-
-          <section className="synth-settings" aria-label="Synth oscillator settings">
-            <article className={`control-card synth-control-card ${synthActive ? "" : "is-disabled"}`}>
-              <div className="control-card-title"><span className="control-icon"><Waves size={18} /></span><div><h3>Synth oscillator</h3><p>Choose the shared pitch relationship and warp algorithm for both SYNTH channels.</p></div></div>
-              <div className="synth-setting-grid">
-                <div className="synth-setting"><span>Ratio set</span><div className="choice-pills synth-ratio-pills" role="group" aria-label="Synth ratio set">{synthRatioSets.map((ratioSet) => <button key={ratioSet} type="button" disabled={!synthActive} className={synthRatioSet === ratioSet ? "active" : ""} aria-pressed={synthRatioSet === ratioSet} onClick={() => updateProgram(setSynthRatioSet, "synthRatioSet", ratioSet)}>{ratioSet}</button>)}</div></div>
-                <div className="synth-setting"><span>Warp algorithm</span><div className="choice-pills synth-warp-pills" role="group" aria-label="Synth warp algorithm">{synthWarpAlgorithms.map((algorithm) => <button key={algorithm} type="button" disabled={!synthActive} className={synthWarpAlgorithm === algorithm ? "active" : ""} aria-pressed={synthWarpAlgorithm === algorithm} onClick={() => updateProgram(setSynthWarpAlgorithm, "synthWarpAlgorithm", algorithm)}>{algorithm}</button>)}</div></div>
               </div>
             </article>
           </section>

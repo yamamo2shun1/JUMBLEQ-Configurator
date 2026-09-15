@@ -29,7 +29,7 @@ export async function installWebMidiMock(page: Page) {
       [0xce, 10],
       [0xce, 14],
       [0xce, 17],
-      [0xce, 21],
+      [0xce, 20],
       [0xce, 24],
       [0xce, 26],
       [0xce, 30],
